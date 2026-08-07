@@ -2,6 +2,11 @@
 
 Spec: `sdd/marketplace-scaffold/spec/favorites-hires` (#21) R1-R3, R6.
 Design: id 26 (routers/favorites.py contract).
+
+The `add_favorite` upsert uses a dialect-aware `Insert(...)` so the
+`on_conflict_do_nothing(index_elements=[...])` works on both sqlite
+(>= 3.24) and Postgres with identical semantics — refactor for FU-1
+(id 35 code-change contract for the `favorites` router).
 """
 from __future__ import annotations
 
@@ -11,6 +16,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.agent import AgentCache
@@ -47,13 +53,24 @@ async def add_favorite(
     user: Annotated[User, Depends(get_current_user)],
     _csrf: Annotated[None, Depends(require_csrf)] = None,
 ) -> FavoriteOut:
-    """Upsert a favorite for the caller (spec R1)."""
+    """Upsert a favorite for the caller (spec R1).
+
+    The conflict target is the composite PK `(address, agent_id)`. ON
+    CONFLICT DO NOTHING is emitted via SQLAlchemy core's `Insert` so the
+    behaviour is identical across sqlite and Postgres.
+    """
     # 404 if the agent isn't cached.
     agent = await db.scalar(select(AgentCache.agent_id).where(AgentCache.agent_id == payload.agent_id))
     if agent is None:
         raise NotFound(f"agent {payload.agent_id!r} not cached")
+    # Dialect-aware Insert: `pg_insert` for Postgres, `sqlite_insert` for
+    # sqlite (>= 3.24). Both support `.on_conflict_do_nothing(...)` on the
+    # composite PK. The conflict target is unambiguous (the PK is the
+    # unique constraint), so we don't need to pass `index_elements` to the
+    # sqlite Insert, but we pass it anyway for symmetry and explicitness.
+    insert_fn = pg_insert if db.bind.dialect.name == "postgresql" else sqlite_insert
     stmt = (
-        pg_insert(Favorite)
+        insert_fn(Favorite)
         .values(address=user.address, agent_id=payload.agent_id)
         .on_conflict_do_nothing(index_elements=[Favorite.address, Favorite.agent_id])
         .returning(Favorite.created_at)
