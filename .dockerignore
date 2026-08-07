@@ -51,3 +51,13 @@ package-lock.json
 
 # Logs
 *.log
+
+# Editor / tooling leftovers
+*.swp
+*.swo
+*.bak
+*~
+.envrc
+
+# OS-specific noise not already covered
+Thumbs.db
