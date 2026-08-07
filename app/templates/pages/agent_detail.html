@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ agent.name or agent.agent_id }} &mdash; bnb_agent{% endblock %}
+{% block content %}
+<article class="agent-detail">
+  <img class="hero" src="{{ agent.image_url | img_fallback }}" alt="{{ agent.name or 'agent' }}" />
+  <h1>{{ agent.name or agent.agent_id }}</h1>
+  <p class="meta">
+    <span class="category">{{ agent.category }}</span>
+    {% if agent.x402_supported %}<span class="badge x402">x402</span>{% endif %}
+    {% if agent.is_verified %}<span class="badge verified">verified</span>{% endif %}
+  </p>
+  <p>{{ agent.description or 'No description.' }}</p>
+  <dl>
+    <dt>Agent ID</dt><dd>{{ agent.agent_id }}</dd>
+    <dt>Owner</dt><dd>{{ agent.owner_address or 'unknown' }}</dd>
+    <dt>Score</dt><dd>{{ agent.average_score or 'n/a' }} ({{ agent.total_feedbacks }} feedbacks)</dd>
+    <dt>Protocols</dt><dd>{{ agent.supported_protocols | join(', ') }}</dd>
+  </dl>
+  <form method="post" action="/api/hires" hx-post="/api/hires"
+        hx-headers='{"X-CSRF-Token": "{{ csrf_token() if csrf_token is defined else '' }}"}'
+        hx-swap="none">
+    <input type="hidden" name="agent_id" value="{{ agent.agent_id }}" />
+    <button type="submit">Hire (status=pending)</button>
+  </form>
+</article>
+{% endblock %}

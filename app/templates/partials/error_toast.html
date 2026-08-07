@@ -1,0 +1,5 @@
+{# Error toast rendered into the #errors region by HTMX (design id 26 D4). #}
+<div class="toast error">
+  <strong>{{ error.code if error is defined and error.code else 'error' }}</strong>
+  <span>{{ error.message if error is defined and error.message else 'Something went wrong.' }}</span>
+</div>
