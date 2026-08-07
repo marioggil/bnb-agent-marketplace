@@ -1,0 +1,16 @@
+{# One agent card. Reused in full pages (pages/home.html) and in
+   HTMX swaps (load-more). The image helper falls back to placeholder.svg
+   when image_url is null/empty (spec web-pages R6, S5). #}
+<article class="agent-card">
+  <a href="/agents/{{ agent.chain_id }}/{{ agent.token_id }}">
+    <img src="{{ agent.image_url | img_fallback }}" alt="{{ agent.name or agent.agent_id }}"
+         onerror="this.onerror=null;this.src='/static/img/placeholder.svg'" />
+    <h3>{{ agent.name or agent.agent_id }}</h3>
+  </a>
+  <p class="meta">
+    <span class="category">{{ agent.category }}</span>
+    {% if agent.x402_supported %}<span class="badge x402">x402</span>{% endif %}
+    {% if agent.is_verified %}<span class="badge verified">verified</span>{% endif %}
+  </p>
+  <p class="score">score {{ agent.average_score or 'n/a' }} ({{ agent.total_feedbacks }})</p>
+</article>

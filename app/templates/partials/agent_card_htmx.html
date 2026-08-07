@@ -1,0 +1,13 @@
+{# HTMX variant of the agent card. Used when the home route returns
+   partials/agent_card.html on HX-Request: true. #}
+<article class="agent-card">
+  <a href="/agents/{{ agent.chain_id }}/{{ agent.token_id }}">
+    <img src="{{ agent.image_url | img_fallback }}" alt="{{ agent.name or agent.agent_id }}"
+         onerror="this.onerror=null;this.src='/static/img/placeholder.svg'" />
+    <h3>{{ agent.name or agent.agent_id }}</h3>
+  </a>
+  <p class="meta">
+    <span class="category">{{ agent.category }}</span>
+    {% if agent.x402_supported %}<span class="badge x402">x402</span>{% endif %}
+  </p>
+</article>

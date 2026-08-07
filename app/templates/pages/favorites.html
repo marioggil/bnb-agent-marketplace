@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Favorites &mdash; bnb_agent{% endblock %}
+{% block content %}
+<section>
+  <h1>Favorites</h1>
+  {% if favorites %}
+    <ul class="favorites">
+      {% for fav in favorites %}
+        {% include "partials/favorites_card.html" %}
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>No favorites yet. Browse the <a href="/">home</a> page to bookmark an agent.</p>
+  {% endif %}
+</section>
+{% endblock %}

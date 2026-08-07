@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Browse BSC agents &mdash; bnb_agent{% endblock %}
+{% block content %}
+<section class="listing">
+  <aside class="filters">
+    <h2>Filters</h2>
+    {% include "partials/filter_form.html" %}
+  </aside>
+  <div class="grid">
+    {% for agent in items %}
+      {% include "partials/agent_card.html" %}
+    {% endfor %}
+  </div>
+  {% if total_pages > 1 %}
+    {% include "partials/pagination.html" %}
+  {% endif %}
+</section>
+{% endblock %}

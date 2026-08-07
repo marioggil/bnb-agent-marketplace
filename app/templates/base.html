@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}bnb_agent marketplace{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/site.css" />
+    <!-- Vendored HTMX 2.x — no CDN inside the container (spec web-pages R1). -->
+    <script src="/static/js/htmx-2.x.min.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/">bnb_agent</a>
+      <nav>
+        <a href="/">Browse</a>
+        <a href="/favorites">Favorites</a>
+        <a href="/auth" hx-boost="true">Sign in</a>
+      </nav>
+    </header>
+
+    <!-- HTMX-targeted error region. Errors posted via HX-Retarget land here
+         without a full page reload (design id 26 D4, base.html contract). -->
+    <div id="errors" hx-swap-oob="innerHTML" aria-live="polite"></div>
+
+    <main>
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+      <small>BNB Agent Marketplace &mdash; mirrors 8004scan BSC agents.</small>
+    </footer>
+  </body>
+</html>
