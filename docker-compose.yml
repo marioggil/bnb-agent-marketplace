@@ -1,0 +1,79 @@
+name: bnb-agent-marketplace
+
+# ---------------------------------------------------------------------------
+# Local dev stack for bnb-agent-marketplace.
+#
+# - `db`  is a Postgres 16 instance with a named volume (`pgdata`) and the
+#   official `pg_isready` healthcheck.
+# - `app` waits for `db` to be healthy, then runs `alembic upgrade head`
+#   before launching uvicorn. The healthcheck probes the FastAPI `/healthz`
+#   endpoint added in PR-C.
+#
+# Bootstrap (from the repo root):
+#   cp .env.example .env
+#   docker compose up --build
+# ---------------------------------------------------------------------------
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: bnb-agent-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bnb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-bnb_agent}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # Exposed on host for psql / dev tooling; remove if running under
+      # Dokploy where only intra-network access is needed.
+      - "5432:5432"
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bnb-agent-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Compose service name `db` is the hostname inside the docker network.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bnb}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-bnb_agent}
+      # 8004scan is read-only; leaving the key empty triggers a [WARN] in the
+      # worker (decision Q7, spec sync-worker R8).
+      8004SCAN_BASE: ${8004SCAN_BASE:-https://8004scan.io/api/v1/public}
+      8004SCAN_API_KEY: ${8004SCAN_API_KEY:-}
+      SECRET_KEY: ${SECRET_KEY:-change-me-32-bytes-min}
+      SESSION_TTL_MIN: ${SESSION_TTL_MIN:-60}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      WORKER_RATE_PER_SEC: ${WORKER_RATE_PER_SEC:-4}
+    ports:
+      - "8000:8000"
+    # `alembic upgrade head` is a no-op until PR-B lands the initial migration;
+    # once the migration is in place this single command will run schema
+    # upgrades on every container start (idempotent).
+    command:
+      - "sh"
+      - "-c"
+      - "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  pgdata:
+    name: bnb-agent-pgdata
