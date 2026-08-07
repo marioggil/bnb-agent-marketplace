@@ -1,0 +1,15 @@
+{
+  "name": "erc-8004-bsc-probe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local prototype to explore ERC-8004 data fields on BNB Smart Chain via the 8004scan public API.",
+  "scripts": {
+    "stats": "node stats.mjs",
+    "agents": "node agents-bsc.mjs",
+    "detail": "node agent-detail.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

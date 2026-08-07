@@ -1,0 +1,26 @@
+# Node (prototipo explorador 8004scan)
+node_modules/
+package-lock.json
+
+# Python (app marketplace)
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Entorno y secretos
+.env
+.env.local
+.env.*.local
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Atl cache
+.atl/
