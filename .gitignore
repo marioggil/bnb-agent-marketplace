@@ -5,12 +5,17 @@ package-lock.json
 # Python (app marketplace)
 __pycache__/
 *.pyc
+*.pyo
 .venv/
 venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 *.egg-info/
+build/
+dist/
+.coverage
+htmlcov/
 
 # Entorno y secretos
 .env
