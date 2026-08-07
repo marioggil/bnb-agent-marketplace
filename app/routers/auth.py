@@ -99,9 +99,19 @@ async def get_nonce(
 @router.post("/verify", response_model=VerifyResponse)
 async def post_verify(
     payload: VerifyRequest,
+    request: Request,
     response: Response,
 ) -> VerifyResponse:
-    """Recover the signer, upsert the user, set the session cookie (spec R3)."""
+    """Recover the signer, upsert the user, set the session cookie (spec R3).
+
+    For HTMX callers (`HX-Request: true`), the 200 response carries an
+    `HX-Redirect: /` so the client navigates to the home page instead of
+    swapping the JSON body. The 401 path is handled by the error handler
+    in `app/errors.py`, which already emits `HX-Redirect: /auth` for HTMX
+    callers. Fix for sdd-verify W3 residual.
+    """
+    if request.headers.get("HX-Request", "").lower() == "true":
+        response.headers["HX-Redirect"] = "/"
     user = await verify_signature(payload.address, payload.signature, payload.nonce)
     _set_session_cookie(response, issue_session(user))
     return VerifyResponse(

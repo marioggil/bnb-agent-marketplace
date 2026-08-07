@@ -75,6 +75,15 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ---
 
+## Running tests
+
+The smoke suite (10 spec files + conftest) lands in `marketplace-scaffold-tests`
+(FU-1). Default `uv run pytest` uses an in-memory aiosqlite engine and runs
+in <5s. The `postgres`-marked scenarios skip unless `RUN_POSTGRES_TESTS=1`
+is set with a live DSN (CI will wire a testcontainer in FU-7).
+
+---
+
 ## Quickstart — Docker
 
 The fastest way to stand the whole stack up:

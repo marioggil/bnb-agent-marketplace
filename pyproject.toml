@@ -65,6 +65,12 @@ packages = ["app"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+# Custom marker so `@pytest.mark.postgres` does not trip `--strict-markers`.
+# The default `pytest` run uses aiosqlite (zero infra); the postgres-marked
+# tests are skipped unless `RUN_POSTGRES_TESTS=1` is set with a live DSN.
+markers = [
+    "postgres: requires real Postgres (skipped unless RUN_POSTGRES_TESTS=1)",
+]
 filterwarnings = [
     "error",
     # httpx deprecation noise from third-party test deps; revisit per release.
