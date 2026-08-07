@@ -221,6 +221,38 @@ For a clean re-run in dev: `uv run alembic downgrade base && uv run alembic upgr
 
 ---
 
+## CI / code quality
+
+The quality bar is enforced by three commands, all wired in `pyproject.toml`:
+
+```bash
+# lint
+uv run ruff check .
+
+# format check (no writes)
+uv run ruff format --check .
+
+# static type check (strict on app/)
+uv run mypy app
+
+# smoke tests (added in PR-C)
+uv run pytest
+```
+
+Ruff rules enabled: `E` (pycodestyle), `F` (pyflakes), `W` (pycodestyle
+warnings), `I` (isort), `TID` (tidy imports — `TID252` enforces design
+D5 module-boundary: `routers/` never imports `db/models/` directly).
+Line length is 100, target Python is 3.12. Mypy runs in `--strict` mode
+against `app/`; tests are allowed to relax `disallow_untyped_defs` so the
+smoke suite can stay concise.
+
+> `uv sync --extra dev` requires [uv](https://astral.sh/uv) on `PATH`. If you
+> do not have it, install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
+> or fall back to the `python -m venv` + `pip install -e ".[dev]"` recipe
+> shown above.
+
+---
+
 ## Environment variables
 
 Every var lives in `.env.example` with a `change-me` placeholder. The full
