@@ -88,10 +88,14 @@ async def _ensure_sync_state(session: AsyncSession) -> SyncState:
 async def _record_failure(
     session: AsyncSession, state: SyncState, token_id: int
 ) -> None:
-    """Append a token_id to the jsonb failure list, capped at FAILED_TOKEN_IDS_CAP (D7)."""
+    """Append a token_id to the jsonb failure list, capped at FAILED_TOKEN_IDS_CAP (D7).
+
+    Order is chronological (oldest first, newest last); trimming `[-CAP:]` drops
+    the oldest entries when the cap is exceeded. Fix for sdd-verify W1.
+    """
     state.failed_token_ids = await session.scalar(
         text(
-            "SELECT jsonb_build_array(:token_id) || COALESCE(sync_state.failed_token_ids, '[]'::jsonb) "
+            "SELECT COALESCE(sync_state.failed_token_ids, '[]'::jsonb) || jsonb_build_array(:token_id) "
             "FROM sync_state WHERE id = 1"
         ).bindparams(token_id=token_id)
     ) or [token_id]

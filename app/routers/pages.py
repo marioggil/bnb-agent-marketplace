@@ -15,13 +15,14 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from jinja2 import pass_context
 
 from app.db.models.agent import AgentCache
 from app.db.models.favorite import Favorite
 from app.db.models.user import User
 from app.db.session import AsyncSessionLocal
 from app.errors import AuthRequired, NotFound
-from app.services.auth import get_current_user
+from app.services.auth import SESSION_COOKIE_NAME, get_current_user, issue_csrf
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,20 @@ def _pagination_window(page: int, total_pages: int, window: int = 2) -> list[int
 
 templates.env.filters["img_fallback"] = _img_fallback
 templates.env.globals["pagination_window"] = _pagination_window
+
+
+# CSRF token is derived from the session cookie. Templates call `{{ csrf_token() }}`
+# (see `favorites_card.html`, `agent_detail.html`); we register a contextfunction
+# so Jinja passes the render context — which FastAPI populates with `request` —
+# letting us read the cookie and return the per-session token. Fix for sdd-verify C1.
+@pass_context
+def _csrf_token_from_context(context: dict[str, Any]) -> str:
+    request = context.get("request")
+    cookie = request.cookies.get(SESSION_COOKIE_NAME) if request is not None else None
+    return issue_csrf(cookie)
+
+
+templates.env.globals["csrf_token"] = _csrf_token_from_context
 
 
 # ---------------------------------------------------------------------------
