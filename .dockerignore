@@ -1,0 +1,63 @@
+# ---------------------------------------------------------------------------
+# .dockerignore for bnb-agent-marketplace
+#
+# Excludes anything that should NOT land in the runtime image. The .mjs
+# prototype scripts (stats.mjs, agents-bsc.mjs, agent-detail.mjs, env.mjs)
+# are kept in the build context as cheap, useful field references (text-only,
+# 0 cost in the image). They are not executed at runtime.
+# ---------------------------------------------------------------------------
+
+# VCS / local state
+.git/
+.gitignore
+.gitattributes
+.atl/
+.codegraph/
+
+# Python — virtualenvs, bytecode, tool caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Tests do not belong in the runtime image; they live in CI/dev.
+tests/
+
+# Build artefacts / packaging
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Secrets & local env (id 12 hygiene: never bake .env into an image)
+.env
+.env.local
+.env.*.local
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+
+# Node — the prototype scripts are kept; node_modules is not used and would
+# be noise if anyone ever ran `npm install` locally.
+node_modules/
+package-lock.json
+
+# Logs
+*.log
+
+# Editor / tooling leftovers
+*.swp
+*.swo
+*.bak
+*~
+.envrc
+
+# OS-specific noise not already covered
+Thumbs.db

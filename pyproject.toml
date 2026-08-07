@@ -1,0 +1,129 @@
+[project]
+name = "bnb-agent-marketplace"
+version = "0.1.0"
+description = "BSC agent marketplace (FastAPI + Postgres + HTMX) that mirrors 8004scan and exposes a minimal wallet-nonce auth."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = { text = "MIT" }
+authors = [
+    { name = "bnb_agent maintainers" },
+]
+keywords = ["bnb", "bsc", "erc-8004", "agents", "marketplace", "fastapi"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP :: WSGI :: Application",
+]
+
+# Runtime dependencies (kept aligned with spec app-bootstrap R1).
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "jinja2>=3.1",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.4",
+    "python-dotenv>=1.0",
+    "itsdangerous>=2.2",
+    "eth-account>=0.13",
+]
+
+[project.optional-dependencies]
+# Dev extras: tests + linting + type checking. Install with `uv sync --extra dev`
+# or `pip install -e ".[dev]"`.
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "respx>=0.21",
+    "aiosqlite>=0.20",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "psycopg2-binary>=2.9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+filterwarnings = [
+    "error",
+    # httpx deprecation noise from third-party test deps; revisit per release.
+    "ignore::DeprecationWarning:httpx.*",
+]
+
+# ---------------------------------------------------------------------------
+# ruff — lint + format (R9, WU7)
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "migrations/versions",
+]
+
+[tool.ruff.lint]
+# E/W: pycodestyle + warnings. F: pyflakes. I: isort. TID: tidy imports (TID252
+# enforces D5 module-boundary: no relative imports across layers).
+select = ["E", "F", "W", "I", "TID"]
+ignore = [
+    # Allow `assert` in tests; smoke suite relies on it heavily.
+    "B011",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+# ---------------------------------------------------------------------------
+# mypy — strict on app/ (R9, WU7)
+# ---------------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_unreachable = true
+# Third-party libs without stubs we use in MVP.
+[[tool.mypy.overrides]]
+module = ["respx", "eth_account.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Tests are smoke-level; allow gradual typing.
+module = "tests.*"
+disallow_untyped_defs = false
