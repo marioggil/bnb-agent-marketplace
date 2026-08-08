@@ -3,25 +3,26 @@ name: bnb-agent-marketplace
 # ---------------------------------------------------------------------------
 # Stack for bnb-agent-marketplace (Dokploy + local dev).
 #
-# IMPORTANT — env var strategy:
-#   Dokploy's compose parser rejects the standard Compose interpolation
-#   form `${VAR}` (it does not expand shell variables in the environment
-#   block at all). The fix is to never reference env vars in this file:
-#   * Safe defaults are inlined as literal strings.
-#   * Secrets and per-deploy values are NOT in this file at all; they are
-#     set in the Dokploy panel and injected directly into the container
-#     as environment variables.
+# Env var strategy:
+#   Dokploy's compose parser does NOT support `${VAR}` interpolation in
+#   the environment block. We therefore:
+#   * Inline safe defaults as literal strings (e.g. 8004SCAN_BASE).
+#   * Leave the per-deploy secrets and connection strings OUT of this
+#     file entirely. They are set in the Dokploy panel (or in a host
+#     .env passed via `docker compose --env-file .env`) and injected
+#     directly into the container as environment variables.
 #
 # Required env vars to set in the Dokploy panel (case-sensitive names):
 #   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
-#   DATABASE_URL (build the full DSN manually, e.g.
-#     postgresql+asyncpg://bnb:<pw>@db:5432/bnb_agent)
-#   SECRET_KEY (32+ random bytes; the app's Settings validator rejects
-#     values that start with "change-me")
-#   8004SCAN_BASE (literal https://8004scan.io/api/v1/public works)
-#   8004SCAN_API_KEY (optional, leave unset for the default 50 rpm tier)
-#   SESSION_TTL_MIN, LOG_LEVEL, WORKER_RATE_PER_SEC (optional, see defaults
-#     below; set in the panel if you need non-default values)
+#     (Postgres refuses to start with empty values, so missing entries
+#     there are loud.)
+#   DATABASE_URL = postgresql+asyncpg://<user>:<password>@db:5432/<db>
+#   SECRET_KEY    = 32+ random bytes (Settings validator rejects weak
+#                   values; see app/config.py)
+#   8004SCAN_API_KEY (optional, leave unset for the free ~50 rpm tier)
+#
+# Optional env vars with sane defaults below (override in the panel):
+#   SESSION_TTL_MIN, LOG_LEVEL, WORKER_RATE_PER_SEC
 # ---------------------------------------------------------------------------
 
 services:
@@ -29,12 +30,8 @@ services:
     image: postgres:16-alpine
     container_name: bnb-agent-db
     restart: unless-stopped
-    environment:
-      # These three are set in the Dokploy panel; if they are missing the
-      # container fails to start (Postgres refuses empty env vars).
-      POSTGRES_USER: bnb
-      POSTGRES_PASSWORD: __SET_ME_IN_DOKPLOY__
-      POSTGRES_DB: bnb_agent
+    # POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB come from the
+    # Dokploy panel; the official image fails fast if they are empty.
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -56,33 +53,37 @@ services:
       db:
         condition: service_healthy
     environment:
-      # DATABASE_URL must point at the `db` service on port 5432. Build the
-      # full DSN in the Dokploy panel using POSTGRES_USER, POSTGRES_PASSWORD,
-      # POSTGRES_DB from the `db` service. Example value:
-      #   postgresql+asyncpg://bnb:<password>@db:5432/bnb_agent
-      DATABASE_URL: __SET_ME_IN_DOKPLOY__
-
-      # 8004scan config. BASE defaults to the public API; the key is
-      # optional (unauthenticated = ~50 rpm, with key = 500 rpm).
+      # 8004scan base URL is safe to inline. The API key is optional and
+      # is set in the Dokploy panel (or left unset for the free tier).
       8004SCAN_BASE: https://8004scan.io/api/v1/public
-      8004SCAN_API_KEY: __SET_OR_LEAVE_EMPTY__
 
-      # Session cookie signing + CSRF derivation. The Settings validator in
-      # app/config.py rejects any value that starts with "change-me" or is
-      # shorter than 32 bytes, so Dokploy must set a real random value.
-      SECRET_KEY: __SET_ME_IN_DOKPLOY__
-
-      # Operational defaults — the literal values below are the recommended
-      # ones; override in the panel only if needed.
+      # Operational defaults — literal values, override in the panel.
       SESSION_TTL_MIN: "60"
       LOG_LEVEL: INFO
       WORKER_RATE_PER_SEC: "4"
     ports:
       - "8000:8000"
+    # Preflight + alembic + uvicorn. The preflight block makes any missing
+    # required env var fail with a clear message instead of a SQLAlchemy
+    # traceback. DATABASE_URL and SECRET_KEY are required (Dokploy must
+    # set them in the panel); without them the container exits 1.
     command:
       - "sh"
       - "-c"
-      - "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      - "set -eu; \
+if [ -z \"$$DATABASE_URL\" ]; then \
+  echo 'FATAL: DATABASE_URL is not set.' >&2; \
+  echo '       Add it in the Dokploy panel as:' >&2; \
+  echo '       postgresql+asyncpg://bnb:<password>@db:5432/bnb_agent' >&2; \
+  exit 1; \
+fi; \
+if [ -z \"$$SECRET_KEY\" ]; then \
+  echo 'FATAL: SECRET_KEY is not set.' >&2; \
+  echo '       Add a 32+ byte random value in the Dokploy panel.' >&2; \
+  exit 1; \
+fi; \
+echo 'preflight OK; running alembic upgrade head...'; \
+alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
       interval: 30s
