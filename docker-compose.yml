@@ -50,11 +50,15 @@ services:
     environment:
       # Compose service name `db` is the hostname inside the docker network.
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bnb}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-bnb_agent}
-      # 8004scan is read-only; leaving the key empty triggers a [WARN] in the
-      # worker (decision Q7, spec sync-worker R8).
+      # 8004scan is read-only; the API key is optional. If unset, `app.config`
+      # treats it as None and the worker logs a [WARN] (decision Q7, spec
+      # sync-worker R8). Note: an empty literal default like `${VAR:-}` makes
+      # the compose parser reject the file with "invalid interpolation format";
+      # omitting the default lets Compose pass the env var through as the
+      # empty string when it's not set, which Settings accepts.
       8004SCAN_BASE: ${8004SCAN_BASE:-https://8004scan.io/api/v1/public}
-      8004SCAN_API_KEY: ${8004SCAN_API_KEY:-}
-      SECRET_KEY: ${SECRET_KEY:-change-me-32-bytes-min}
+      8004SCAN_API_KEY: ${8004SCAN_API_KEY}
+      SECRET_KEY: ${SECRET_KEY}
       SESSION_TTL_MIN: ${SESSION_TTL_MIN:-60}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       WORKER_RATE_PER_SEC: ${WORKER_RATE_PER_SEC:-4}
