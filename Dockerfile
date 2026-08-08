@@ -88,6 +88,12 @@ COPY --from=builder --chown=${APP_USER}:${APP_USER} /root/.local /home/${APP_USE
 
 # Copy application source.
 COPY --from=builder --chown=${APP_USER}:${APP_USER} /build/app ./app
+# Alembic config + migrations. The container's entrypoint runs
+# `alembic upgrade head` before uvicorn, so both must be present in the
+# working directory (`/home/${APP_USER}/app`) alongside `alembic.ini`,
+# which references `script_location = migrations`.
+COPY --chown=${APP_USER}:${APP_USER} alembic.ini ./
+COPY --chown=${APP_USER}:${APP_USER} migrations ./migrations
 COPY --chown=${APP_USER}:${APP_USER} pyproject.toml README.md ./
 
 USER ${APP_USER}
