@@ -55,14 +55,45 @@ def make_engine(url: str | None = None) -> AsyncEngine:
     )
 
 
-# Module-level engine; created lazily so importing the module is cheap and
-# tests can replace `engine` before first use.
-engine: AsyncEngine = make_engine()
-AsyncSessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(
-    engine,
-    expire_on_commit=False,
-    class_=AsyncSession,
-)
+# Lazy engine + sessionmaker. Importing this module MUST NOT touch the
+# network or parse DATABASE_URL; otherwise scripts that import any of the
+# app.* modules before DATABASE_URL is set in the environment (Alembic's
+# env.py is the canonical example) crash with
+#   "Could not parse SQLAlchemy URL from given URL string".
+# The engine is created the first time get_engine() is called.
+_engine: AsyncEngine | None = None
+_AsyncSessionLocal: async_sessionmaker[AsyncSession] | None = None
+
+
+def get_engine() -> AsyncEngine:
+    """Return the lazily-initialized async engine, creating it on first call."""
+    global _engine, _AsyncSessionLocal
+    if _engine is None:
+        _engine = make_engine()
+        _AsyncSessionLocal = async_sessionmaker(
+            _engine,
+            expire_on_commit=False,
+            class_=AsyncSession,
+        )
+    return _engine
+
+
+def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
+    """Return the lazily-initialized session factory (creates the engine too)."""
+    get_engine()
+    assert _AsyncSessionLocal is not None  # for type-checkers
+    return _AsyncSessionLocal
+
+
+# Back-compat aliases for callers that imported the module-level names
+# directly (the FastAPI app's lifespan and get_db still use them). They are
+# resolved lazily on first attribute access.
+def __getattr__(name: str):
+    if name == "engine":
+        return get_engine()
+    if name == "AsyncSessionLocal":
+        return get_sessionmaker()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # Re-export Base for callers that need metadata (e.g. Alembic).
@@ -73,11 +104,13 @@ __all__ = [
     "MAX_OVERFLOW",
     "engine",
     "get_db",
+    "get_engine",
+    "get_sessionmaker",
     "make_engine",
 ]
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:
     """FastAPI dependency yielding a request-scoped async session."""
-    async with AsyncSessionLocal() as session:
+    async with get_sessionmaker()() as session:
         yield session
