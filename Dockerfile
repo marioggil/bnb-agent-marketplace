@@ -95,6 +95,10 @@ COPY --from=builder --chown=${APP_USER}:${APP_USER} /build/app ./app
 COPY --chown=${APP_USER}:${APP_USER} alembic.ini ./
 COPY --chown=${APP_USER}:${APP_USER} migrations ./migrations
 COPY --chown=${APP_USER}:${APP_USER} pyproject.toml README.md ./
+# Entrypoint script: preflight + alembic + uvicorn. Kept on disk rather
+# than inline in the compose `command:` because Dokploy's compose parser
+# mishandles the multi-line `sh -c` string with embedded quotes.
+COPY --chown=${APP_USER}:${APP_USER} --chmod=0755 entrypoint.sh ./entrypoint.sh
 
 USER ${APP_USER}
 

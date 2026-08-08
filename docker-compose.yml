@@ -69,21 +69,7 @@ services:
     # set them in the panel); without them the container exits 1.
     command:
       - "sh"
-      - "-c"
-      - "set -eu; \
-if [ -z \"$$DATABASE_URL\" ]; then \
-  echo 'FATAL: DATABASE_URL is not set.' >&2; \
-  echo '       Add it in the Dokploy panel as:' >&2; \
-  echo '       postgresql+asyncpg://bnb:<password>@db:5432/bnb_agent' >&2; \
-  exit 1; \
-fi; \
-if [ -z \"$$SECRET_KEY\" ]; then \
-  echo 'FATAL: SECRET_KEY is not set.' >&2; \
-  echo '       Add a 32+ byte random value in the Dokploy panel.' >&2; \
-  exit 1; \
-fi; \
-echo 'preflight OK; running alembic upgrade head...'; \
-alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      - "./entrypoint.sh"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
       interval: 30s
