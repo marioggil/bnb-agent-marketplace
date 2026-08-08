@@ -1,17 +1,27 @@
 name: bnb-agent-marketplace
 
 # ---------------------------------------------------------------------------
-# Local dev stack for bnb-agent-marketplace.
+# Local dev + Dokploy stack for bnb-agent-marketplace.
 #
 # - `db`  is a Postgres 16 instance with a named volume (`pgdata`) and the
 #   official `pg_isready` healthcheck.
 # - `app` waits for `db` to be healthy, then runs `alembic upgrade head`
 #   before launching uvicorn. The healthcheck probes the FastAPI `/healthz`
-#   endpoint added in PR-C.
+#   endpoint.
 #
 # Bootstrap (from the repo root):
-#   cp .env.example .env
 #   docker compose up --build
+#
+# Env var injection strategy (important):
+#   Dokploy's compose parser rejects the standard Compose interpolation
+#   form `${VAR:-default}` for any default (not only the empty-literal
+#   `${VAR:-}` reported in build logs). Every env var in this file is
+#   therefore either:
+#     * a literal default (safe values only — e.g. `LOG_LEVEL=INFO`),
+#     * or a bare `${VAR}` reference, which is set in the Dokploy panel
+#       and falls back to the empty string when unset (the app's Settings
+#       raises a clear validation error for missing secrets).
+#   Do not reintroduce `${VAR:-default}` here.
 # ---------------------------------------------------------------------------
 
 services:
@@ -20,15 +30,11 @@ services:
     container_name: bnb-agent-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-bnb}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
-      POSTGRES_DB: ${POSTGRES_DB:-bnb_agent}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      # Exposed on host for psql / dev tooling; remove if running under
-      # Dokploy where only intra-network access is needed.
-      - "5432:5432"
     healthcheck:
       test:
         - "CMD-SHELL"
@@ -48,25 +54,18 @@ services:
       db:
         condition: service_healthy
     environment:
-      # Compose service name `db` is the hostname inside the docker network.
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bnb}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-bnb_agent}
-      # 8004scan is read-only; the API key is optional. If unset, `app.config`
-      # treats it as None and the worker logs a [WARN] (decision Q7, spec
-      # sync-worker R8). Note: an empty literal default like `${VAR:-}` makes
-      # the compose parser reject the file with "invalid interpolation format";
-      # omitting the default lets Compose pass the env var through as the
-      # empty string when it's not set, which Settings accepts.
-      8004SCAN_BASE: ${8004SCAN_BASE:-https://8004scan.io/api/v1/public}
+      # All values must be set in the Dokploy panel (or the host's .env when
+      # running locally with `docker compose --env-file .env`). No default
+      # fallbacks in this file because Dokploy's parser rejects the form.
+      DATABASE_URL: ${DATABASE_URL}
+      8004SCAN_BASE: ${8004SCAN_BASE}
       8004SCAN_API_KEY: ${8004SCAN_API_KEY}
       SECRET_KEY: ${SECRET_KEY}
-      SESSION_TTL_MIN: ${SESSION_TTL_MIN:-60}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      WORKER_RATE_PER_SEC: ${WORKER_RATE_PER_SEC:-4}
+      SESSION_TTL_MIN: ${SESSION_TTL_MIN}
+      LOG_LEVEL: ${LOG_LEVEL}
+      WORKER_RATE_PER_SEC: ${WORKER_RATE_PER_SEC}
     ports:
       - "8000:8000"
-    # `alembic upgrade head` is a no-op until PR-B lands the initial migration;
-    # once the migration is in place this single command will run schema
-    # upgrades on every container start (idempotent).
     command:
       - "sh"
       - "-c"
