@@ -58,6 +58,14 @@ COPY app ./app
 # ---------- runtime ---------------------------------------------------------
 FROM python:${PYTHON_VERSION}-slim AS runtime
 
+# Re-declare user/group ARGs in the runtime stage: ARGs declared in the
+# top-level only apply to the first FROM that consumes them. Without these,
+# `${APP_USER}` / `${APP_UID}` / `${APP_GID}` would expand to empty strings
+# and `groupadd --gid ''` would fail.
+ARG APP_USER=appuser
+ARG APP_UID=1000
+ARG APP_GID=1000
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/home/${APP_USER}/.local/bin:${PATH}" \
