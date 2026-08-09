@@ -102,4 +102,10 @@ services:
 
 volumes:
   pgdata:
-    name: bnb-agent-pgdata
+    # The previous name (bnb-agent-pgdata) was created on the very first
+    # deploy with a Postgres password that no longer matches the one in
+    # this compose. Postgres only re-runs initdb on an empty volume, so
+    # rotating the password requires creating a new named volume. The old
+    # `bnb-agent-pgdata` can be removed manually once we confirm the new
+    # stack is healthy.
+    name: bnb-agent-pgdata-v2
