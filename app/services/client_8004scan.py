@@ -206,12 +206,21 @@ class AgentResponse(BaseModel):
     )
     @classmethod
     def _none_to_default_list(cls, v: Any) -> Any:
-        """The 8004scan upstream emits `null` for some list fields (notably
-        `cross_chain_versions` on agents with no cross-chain mirror).
-        Treat `null` as the empty list so downstream code can keep a
-        single invariant (`list[X]`) without nullability checks."""
+        """Coerce null list fields to []. 8004scan emits `null` for
+        list fields (notably cross_chain_versions) when the agent has
+        no value to report."""
         if v is None:
             return []
+        return v
+
+    @field_validator("services", mode="before")
+    @classmethod
+    def _none_to_default_dict(cls, v: Any) -> Any:
+        """Coerce the null services map to {}. 8004scan emits `null`
+        for `services` when the agent exposes no service endpoints
+        (A2A / MCP / ENS / DID / web)."""
+        if v is None:
+            return {}
         return v
 
 
