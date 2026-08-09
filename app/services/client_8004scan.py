@@ -354,6 +354,9 @@ class Client8004Scan:
         if data is None:
             # 404 on /stats is implausible; treat as empty stats.
             return StatsResponse()
+        # 8004scan wraps the response in `{success, data}`. Unwrap.
+        if isinstance(data, dict) and "data" in data and isinstance(data["data"], dict):
+            data = data["data"]
         if isinstance(data, dict):
             return StatsResponse(**data)
         # Some upstreams return a top-level list. Coerce defensively.
@@ -423,6 +426,13 @@ class Client8004Scan:
         if data is None:
             return None
         if isinstance(data, dict):
+            # 8004scan wraps the response in `{success, data}`. Unwrap
+            # before handing the dict to _coerce_agent so the per-agent
+            # fields (token_id, agent_id, services, ...) bind to the
+            # model columns instead of falling into `raw` as a nested
+            # `data` envelope.
+            if "data" in data and isinstance(data["data"], dict):
+                data = data["data"]
             return self._coerce_agent(data)
         # Unexpected shape — be defensive and return None rather than crash.
         logger.warning("get_agent(%s, %s): unexpected payload shape", chain_id, token_id)
