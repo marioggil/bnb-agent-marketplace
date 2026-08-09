@@ -275,16 +275,24 @@ class Client8004Scan:
             )
             if not data:
                 return
-            # Upstream shape may be a list or {"items": [...]}; accept both.
+            # 8004scan wraps every response in `{"success": true, "data": ...}`.
+            # Accept that, plus the historical {items:[]} / {agents:[]} forms,
+            # and a top-level list.
             items: list[dict[str, Any]]
             if isinstance(data, list):
                 items = data
-            elif isinstance(data, dict) and isinstance(data.get("items"), list):
-                items = data["items"]
-            elif isinstance(data, dict) and isinstance(data.get("agents"), list):
-                items = data["agents"]
+            elif isinstance(data, dict):
+                wrapped = data.get("data")
+                if isinstance(wrapped, list):
+                    items = wrapped
+                elif isinstance(data.get("items"), list):
+                    items = data["items"]
+                elif isinstance(data.get("agents"), list):
+                    items = data["agents"]
+                else:
+                    # Unknown shape — yield nothing this page and stop.
+                    return
             else:
-                # Unknown shape — yield nothing this page and stop.
                 return
             if not items:
                 return
