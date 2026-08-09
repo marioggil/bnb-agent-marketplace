@@ -163,7 +163,7 @@ class AgentResponse(BaseModel):
     endpoint_verified_domain: str | None = None
     endpoint_verification_error: str | None = None
     endpoint_last_checked_at: datetime | None = None
-    health_status: str | None = None
+    health_status: dict[str, Any] | str | None = None
     health_score: float | None = None
     health_checked_at: datetime | None = None
 

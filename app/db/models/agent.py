@@ -197,7 +197,7 @@ class AgentCache(Base):
     endpoint_last_checked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    health_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    health_status: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     health_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     health_checked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

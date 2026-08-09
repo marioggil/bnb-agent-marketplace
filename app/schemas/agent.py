@@ -89,7 +89,7 @@ class AgentOut(BaseModel):
     endpoint_verified_domain: str | None = None
     endpoint_verification_error: str | None = None
     endpoint_last_checked_at: datetime | None = None
-    health_status: str | None = None
+    health_status: dict[str, Any] | None = None
     health_score: Decimal | None = None
     health_checked_at: datetime | None = None
 
