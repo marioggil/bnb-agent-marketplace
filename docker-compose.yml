@@ -30,8 +30,17 @@ services:
     image: postgres:16-alpine
     container_name: bnb-agent-db
     restart: unless-stopped
-    # POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB come from the
-    # Dokploy panel; the official image fails fast if they are empty.
+    # Inline env vars for the Postgres image. Dokploy v0.29.14 with a
+    # GitHub provider does NOT inject panel env-vars into the runtime
+    # container for compose services (verified 2026-08-08: panel values
+    # were saved but the Converted Compose showed an empty `environment:`
+    # block, and the app container's preflight crashed with
+    # `FATAL: DATABASE_URL is not set` every restart). The literals below
+    # are required to make the stack bootable. Rotate after deploy.
+    environment:
+      POSTGRES_USER: bnb
+      POSTGRES_PASSWORD: CVc9et1hDP3PYwRILMFiZkXE
+      POSTGRES_DB: bnb_agent
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -61,6 +70,17 @@ services:
       SESSION_TTL_MIN: "60"
       LOG_LEVEL: INFO
       WORKER_RATE_PER_SEC: "4"
+
+      # Secrets inlined for the same reason as the `db` service above:
+      # Dokploy's panel env-vars are not reaching this container, so the
+      # preflight (DATABASE_URL / SECRET_KEY) and the Postgres auth
+      # (POSTGRES_*) must come from the compose file. Accept the repo-
+      # hygiene trade-off for the MVP alpha and rotate after deploy.
+      POSTGRES_USER: bnb
+      POSTGRES_PASSWORD: CVc9et1hDP3PYwRILMFiZkXE
+      POSTGRES_DB: bnb_agent
+      DATABASE_URL: postgresql+asyncpg://bnb:CVc9et1hDP3PYwRILMFiZkXE@db:5432/bnb_agent
+      SECRET_KEY: BWe6k5vSV47iRy4FyXvzkgwdav4apdTeaiJpTJOnqxY
     ports:
       - "8000:8000"
     # Preflight + alembic + uvicorn. The preflight block makes any missing
