@@ -35,6 +35,11 @@ dependencies = [
     "python-dotenv>=1.0",
     "itsdangerous>=2.2",
     "eth-account>=0.13",
+    # Required at runtime by `migrations/env.py` — it rewrites the asyncpg
+    # DSN to `postgresql+psycopg2://` before `create_engine()` runs against
+    # the migration target. The dev-extra `psycopg2-binary` was insufficient:
+    # alembic upgrade head in the container crashes with NoSuchModuleError.
+    "psycopg2-binary>=2.9",
 ]
 
 [project.optional-dependencies]

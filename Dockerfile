@@ -48,7 +48,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         "pydantic-settings>=2.4" \
         "python-dotenv>=1.0" \
         "itsdangerous>=2.2" \
-        "eth-account>=0.13"
+        "eth-account>=0.13" \
+        # Runtime dep for migrations: `migrations/env.py` swaps the DSN to
+        # `postgresql+psycopg2://` and `create_engine` needs the driver
+        # present. Without it, `alembic upgrade head` raises NoSuchModuleError.
+        "psycopg2-binary>=2.9"
 
 # Copy the application source last so changes don't bust the deps cache.
 # (app/ does not exist yet at PR-A; PR-B/C will add the modules referenced
