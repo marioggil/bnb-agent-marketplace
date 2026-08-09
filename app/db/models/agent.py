@@ -16,6 +16,7 @@ from sqlalchemy import (
     CheckConstraint,
     Computed,
     DateTime,
+    Float,
     Index,
     Integer,
     Numeric,
@@ -24,7 +25,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -62,17 +63,84 @@ class AgentCache(Base):
     token_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     registry_address: Mapped[str] = mapped_column(Text, nullable=False)
 
+    # ------------------------------------------------------------------
+    # Identity / owner
+    # ------------------------------------------------------------------
+    #: 8004scan-internal UUID for the agent (used as a join key into
+    #: /feedbacks and as a stable cross-source identifier).
+    agent_internal_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+    chain_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    contract_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_testnet: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    creator_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    owner_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+    owner_ens: Mapped[str | None] = mapped_column(Text, nullable=True)
+    owner_username: Mapped[str | None] = mapped_column(Text, nullable=True)
+    owner_avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    owner_publisher_tier: Mapped[str | None] = mapped_column(Text, nullable=True)
+    owner_certified_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     owner_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ------------------------------------------------------------------
+    # Presentation
+    # ------------------------------------------------------------------
     name: Mapped[str | None] = mapped_column(Text, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    agent_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    agent_wallet: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    star_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    watch_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    tags: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    categories: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
 
+    # ------------------------------------------------------------------
+    # Service endpoints (A2A, MCP, ENS, DID) — the marketplace can
+    # render deep-links to each surface from this single object.
+    # ------------------------------------------------------------------
+    services: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+
+    # ------------------------------------------------------------------
+    # Protocols / payments
+    # ------------------------------------------------------------------
     x402_supported: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
     supported_protocols: Mapped[list] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
+    supported_trust_models: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+
+    # ------------------------------------------------------------------
+    # Score + feedback aggregates
+    # ------------------------------------------------------------------
+    average_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    total_score: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    total_feedbacks: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    total_validations: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    successful_validations: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    network_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scores: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # D3 — GENERATED ALWAYS AS STORED. Persisted so it can be indexed and
     # filtered directly. The expression follows the design's MVP mapping:
@@ -96,16 +164,87 @@ class AgentCache(Base):
         nullable=False,
     )
 
-    average_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
-    total_feedbacks: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
-    is_verified: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false")
+    # ------------------------------------------------------------------
+    # Cross-chain
+    # ------------------------------------------------------------------
+    cross_chain_links: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
     cross_chain_versions: Mapped[list] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
+
+    # ------------------------------------------------------------------
+    # On-chain provenance
+    # ------------------------------------------------------------------
+    created_block_number: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_tx_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ------------------------------------------------------------------
+    # Endpoint health / verification
+    # ------------------------------------------------------------------
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    is_endpoint_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    endpoint_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    endpoint_verified_domain: Mapped[str | None] = mapped_column(Text, nullable=True)
+    endpoint_verification_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    endpoint_last_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    health_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    health_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    health_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # ------------------------------------------------------------------
+    # Quality scores (0-100)
+    # ------------------------------------------------------------------
+    quality_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    popularity_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    activity_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    wallet_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    freshness_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    metadata_completeness_score: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 2), nullable=True
+    )
+
+    # ------------------------------------------------------------------
+    # Supplementary identity
+    # ------------------------------------------------------------------
+    ens: Mapped[str | None] = mapped_column(Text, nullable=True)
+    did: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mcp_server: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mcp_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    a2a_endpoint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    a2a_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    agent_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ------------------------------------------------------------------
+    # Parse / metadata diagnostics
+    # ------------------------------------------------------------------
+    parse_status: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    raw_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # ------------------------------------------------------------------
+    # Upstream timestamps (vs. our `created_at`/`updated_at` for the mirror).
+    # ------------------------------------------------------------------
+    upstream_created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    upstream_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # ------------------------------------------------------------------
+    # Catch-all for fields we don't model explicitly.
+    # ------------------------------------------------------------------
     raw: Mapped[dict] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
@@ -121,6 +260,7 @@ class AgentCache(Base):
 
     __table_args__ = (
         UniqueConstraint("chain_id", "token_id", name="uq_agent_cache_chain_token"),
+        UniqueConstraint("agent_internal_id", name="uq_agent_cache_internal_id"),
         # btree on category (used by the filter UI).
         Index("ix_agent_cache_category", "category"),
         Index(
@@ -136,6 +276,10 @@ class AgentCache(Base):
             text("created_at DESC"),
         ),
         Index(
+            "ix_agent_cache_star_count_desc",
+            text("star_count DESC"),
+        ),
+        Index(
             "ix_agent_cache_x402_true",
             "id",
             postgresql_where=text("x402_supported"),
@@ -145,10 +289,21 @@ class AgentCache(Base):
             "id",
             postgresql_where=text("is_verified"),
         ),
+        Index(
+            "ix_agent_cache_endpoint_verified_true",
+            "id",
+            postgresql_where=text("is_endpoint_verified"),
+        ),
         # GIN on the protocols list — used by ?protocols=oasf style filters.
         Index(
             "ix_agent_cache_supported_protocols_gin",
             "supported_protocols",
+            postgresql_using="gin",
+        ),
+        # GIN on services — used to filter agents exposing A2A/MCP surfaces.
+        Index(
+            "ix_agent_cache_services_gin",
+            "services",
             postgresql_using="gin",
         ),
         # GIN trigram on `name` requires the pg_trgm extension. Created in

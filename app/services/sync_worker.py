@@ -110,24 +110,97 @@ async def _record_failure(
 
 
 def _row_from_agent(agent: Any, category_override: str) -> dict[str, Any]:
-    """Map an `AgentResponse` to a dict compatible with the agent_cache columns."""
+    """Map an `AgentResponse` to a dict compatible with the agent_cache columns.
+
+    The AgentResponse now carries the full 8004scan detail payload
+    (added in commit 0b5d34c's client_8004scan expansion): ~50 fields
+    including services, raw_metadata, on-chain provenance, quality
+    scores and endpoint health. We map everything to its corresponding
+    column; unmodelled upstream fields continue to land in `raw`.
+    """
     return {
+        # -- identity --
         "agent_id": agent.agent_id or canonical_agent_id(agent.chain_id or BSC_CHAIN_ID, agent.token_id or 0),
+        "agent_internal_id": agent.id,
         "chain_id": int(agent.chain_id) if agent.chain_id is not None else BSC_CHAIN_ID,
+        "chain_type": agent.chain_type,
         "token_id": int(agent.token_id) if agent.token_id is not None else 0,
+        "contract_address": agent.contract_address or BSC_IDENTITY_REGISTRY,
         "registry_address": BSC_IDENTITY_REGISTRY,
-        "owner_address": agent.owner,
+        "is_testnet": bool(agent.is_testnet),
+        # -- owner --
+        "owner_id": agent.owner_id,
+        "owner_address": agent.owner_address,
+        "owner_ens": agent.owner_ens,
+        "owner_username": agent.owner_username,
+        "owner_avatar_url": agent.owner_avatar_url,
+        "owner_publisher_tier": agent.owner_publisher_tier,
+        "owner_certified_name": agent.owner_certified_name,
+        "creator_address": agent.creator_address,
+        # -- presentation --
         "name": agent.name,
         "description": agent.description,
-        "image_url": agent.image_url or agent.image,
+        "agent_type": agent.agent_type,
+        "image_url": agent.image_url,
+        "agent_wallet": agent.agent_wallet,
+        "is_verified": bool(agent.is_verified),
+        "star_count": int(agent.star_count or 0),
+        "watch_count": int(agent.watch_count or 0),
+        "tags": list(agent.tags or []),
+        "categories": list(agent.categories or []),
+        # -- service endpoints --
+        "services": dict(agent.services or {}),
+        # -- protocols / payments --
         "x402_supported": bool(agent.x402_supported),
         "supported_protocols": list(agent.supported_protocols or []),
-        # `category` is GENERATED. The post-pass UPDATE below overwrites it
-        # only when the rich mapping differs from the default.
+        "supported_trust_models": list(agent.supported_trust_models or []),
+        # -- scores --
         "average_score": agent.average_score,
+        "total_score": agent.total_score,
         "total_feedbacks": int(agent.total_feedbacks or 0),
-        "is_verified": bool(agent.is_verified),
+        "total_validations": int(agent.total_validations or 0),
+        "successful_validations": int(agent.successful_validations or 0),
+        "rank": agent.rank,
+        "network_rank": agent.network_rank,
+        "scores": agent.scores,
+        # -- cross-chain --
+        "cross_chain_links": list(agent.cross_chain_links or []),
         "cross_chain_versions": list(agent.cross_chain_versions or []),
+        # -- on-chain provenance --
+        "created_block_number": agent.created_block_number,
+        "created_tx_hash": agent.created_tx_hash,
+        # -- endpoint health --
+        "is_active": bool(agent.is_active),
+        "is_endpoint_verified": bool(agent.is_endpoint_verified),
+        "endpoint_verified_at": agent.endpoint_verified_at,
+        "endpoint_verified_domain": agent.endpoint_verified_domain,
+        "endpoint_verification_error": agent.endpoint_verification_error,
+        "endpoint_last_checked_at": agent.endpoint_last_checked_at,
+        "health_status": agent.health_status,
+        "health_score": agent.health_score,
+        "health_checked_at": agent.health_checked_at,
+        # -- quality scores --
+        "quality_score": agent.quality_score,
+        "popularity_score": agent.popularity_score,
+        "activity_score": agent.activity_score,
+        "wallet_score": agent.wallet_score,
+        "freshness_score": agent.freshness_score,
+        "metadata_completeness_score": agent.metadata_completeness_score,
+        # -- supplementary identity --
+        "ens": agent.ens,
+        "did": agent.did,
+        "mcp_server": agent.mcp_server,
+        "mcp_version": agent.mcp_version,
+        "a2a_endpoint": agent.a2a_endpoint,
+        "a2a_version": agent.a2a_version,
+        "agent_url": agent.agent_url,
+        # -- parse / metadata --
+        "parse_status": agent.parse_status,
+        "raw_metadata": agent.raw_metadata,
+        # -- upstream timestamps --
+        "upstream_created_at": agent.created_at,
+        "upstream_updated_at": agent.updated_at,
+        # -- catch-all (unmodelled upstream fields) --
         "raw": dict(agent.raw or {}),
     }
 
@@ -135,25 +208,97 @@ def _row_from_agent(agent: Any, category_override: str) -> dict[str, Any]:
 async def _upsert_agent(
     session: AsyncSession, row: dict[str, Any]
 ) -> None:
-    """Idempotent ON CONFLICT upsert keyed on agent_id."""
+    """Idempotent ON CONFLICT upsert keyed on agent_id.
+
+    Touches every column the 8004scan detail endpoint can populate so
+    re-running the seed or sync converges on the latest snapshot.
+    """
     stmt = pg_insert(AgentCache).values(**row)
     excluded = stmt.excluded
     stmt = stmt.on_conflict_do_update(
         index_elements=[AgentCache.agent_id],
         set_={
+            # -- identity --
+            "agent_internal_id": excluded.agent_internal_id,
             "chain_id": excluded.chain_id,
+            "chain_type": excluded.chain_type,
             "token_id": excluded.token_id,
+            "contract_address": excluded.contract_address,
             "registry_address": excluded.registry_address,
+            "is_testnet": excluded.is_testnet,
+            # -- owner --
+            "owner_id": excluded.owner_id,
             "owner_address": excluded.owner_address,
+            "owner_ens": excluded.owner_ens,
+            "owner_username": excluded.owner_username,
+            "owner_avatar_url": excluded.owner_avatar_url,
+            "owner_publisher_tier": excluded.owner_publisher_tier,
+            "owner_certified_name": excluded.owner_certified_name,
+            "creator_address": excluded.creator_address,
+            # -- presentation --
             "name": excluded.name,
             "description": excluded.description,
+            "agent_type": excluded.agent_type,
             "image_url": excluded.image_url,
+            "agent_wallet": excluded.agent_wallet,
+            "is_verified": excluded.is_verified,
+            "star_count": excluded.star_count,
+            "watch_count": excluded.watch_count,
+            "tags": excluded.tags,
+            "categories": excluded.categories,
+            # -- service endpoints --
+            "services": excluded.services,
+            # -- protocols / payments --
             "x402_supported": excluded.x402_supported,
             "supported_protocols": excluded.supported_protocols,
+            "supported_trust_models": excluded.supported_trust_models,
+            # -- scores --
             "average_score": excluded.average_score,
+            "total_score": excluded.total_score,
             "total_feedbacks": excluded.total_feedbacks,
-            "is_verified": excluded.is_verified,
+            "total_validations": excluded.total_validations,
+            "successful_validations": excluded.successful_validations,
+            "rank": excluded.rank,
+            "network_rank": excluded.network_rank,
+            "scores": excluded.scores,
+            # -- cross-chain --
+            "cross_chain_links": excluded.cross_chain_links,
             "cross_chain_versions": excluded.cross_chain_versions,
+            # -- on-chain provenance --
+            "created_block_number": excluded.created_block_number,
+            "created_tx_hash": excluded.created_tx_hash,
+            # -- endpoint health --
+            "is_active": excluded.is_active,
+            "is_endpoint_verified": excluded.is_endpoint_verified,
+            "endpoint_verified_at": excluded.endpoint_verified_at,
+            "endpoint_verified_domain": excluded.endpoint_verified_domain,
+            "endpoint_verification_error": excluded.endpoint_verification_error,
+            "endpoint_last_checked_at": excluded.endpoint_last_checked_at,
+            "health_status": excluded.health_status,
+            "health_score": excluded.health_score,
+            "health_checked_at": excluded.health_checked_at,
+            # -- quality scores --
+            "quality_score": excluded.quality_score,
+            "popularity_score": excluded.popularity_score,
+            "activity_score": excluded.activity_score,
+            "wallet_score": excluded.wallet_score,
+            "freshness_score": excluded.freshness_score,
+            "metadata_completeness_score": excluded.metadata_completeness_score,
+            # -- supplementary identity --
+            "ens": excluded.ens,
+            "did": excluded.did,
+            "mcp_server": excluded.mcp_server,
+            "mcp_version": excluded.mcp_version,
+            "a2a_endpoint": excluded.a2a_endpoint,
+            "a2a_version": excluded.a2a_version,
+            "agent_url": excluded.agent_url,
+            # -- parse / metadata --
+            "parse_status": excluded.parse_status,
+            "raw_metadata": excluded.raw_metadata,
+            # -- upstream timestamps --
+            "upstream_created_at": excluded.upstream_created_at,
+            "upstream_updated_at": excluded.upstream_updated_at,
+            # -- catch-all --
             "raw": excluded.raw,
             "updated_at": text("now()"),
         },
