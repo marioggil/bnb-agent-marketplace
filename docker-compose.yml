@@ -41,6 +41,9 @@ services:
       POSTGRES_USER: bnb
       POSTGRES_PASSWORD: CVc9et1hDP3PYwRILMFiZkXE
       POSTGRES_DB: bnb_agent
+    # Note: when changing POSTGRES_PASSWORD you must `docker volume rm
+    # bnb-agent-pgdata` once so initdb re-runs with the new credentials.
+    # The `db` container will not accept a password change otherwise.
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
