@@ -52,7 +52,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         # Runtime dep for migrations: `migrations/env.py` swaps the DSN to
         # `postgresql+psycopg2://` and `create_engine` needs the driver
         # present. Without it, `alembic upgrade head` raises NoSuchModuleError.
-        "psycopg2-binary>=2.9"
+        "psycopg2-binary>=2.9" \
+        # Runtime dep for the sync worker's retry/backoff loop in
+        # `app/services/client_8004scan.py`. Was relying on being a
+        # transitive dep before; pinned explicitly so a future httpx
+        # bump cannot drop it.
+        "tenacity>=8.2"
 
 # Copy the application source last so changes don't bust the deps cache.
 # (app/ does not exist yet at PR-A; PR-B/C will add the modules referenced

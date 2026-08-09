@@ -40,6 +40,12 @@ dependencies = [
     # the migration target. The dev-extra `psycopg2-binary` was insufficient:
     # alembic upgrade head in the container crashes with NoSuchModuleError.
     "psycopg2-binary>=2.9",
+    # Required at runtime by `app/services/client_8004scan.py` for the
+    # 429/5xx retry/backoff loop. Was implicitly relied on as a transitive
+    # dep; we declare it explicitly so a future bump of httpx or pydantic
+    # doesn't silently drop tenacity and break the sync worker on
+    # `python -m app.worker.sync`.
+    "tenacity>=8.2",
 ]
 
 [project.optional-dependencies]
