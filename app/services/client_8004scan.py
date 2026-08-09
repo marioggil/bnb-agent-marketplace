@@ -24,7 +24,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from tenacity import (
     AsyncRetrying,
     RetryCallState,
@@ -109,6 +109,19 @@ class AgentResponse(BaseModel):
     # __pydantic_extra__ at construction time so unknown upstream fields
     # don't get lost.
     raw: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator(
+        "supported_protocols", "cross_chain_versions", mode="before"
+    )
+    @classmethod
+    def _none_to_default_list(cls, v: Any) -> Any:
+        """The 8004scan upstream emits `null` for some list fields (notably
+        `cross_chain_versions` on agents with no cross-chain mirror). Treat
+        `null` as the empty list so downstream code can keep a single
+        invariant (`list[X]`) without nullability checks everywhere."""
+        if v is None:
+            return []
+        return v
 
 
 # ---------------------------------------------------------------------------
