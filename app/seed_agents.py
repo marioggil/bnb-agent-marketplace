@@ -37,6 +37,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_LIMIT: int = 50
 DEFAULT_PAGE_SIZE: int = 200
 PROGRESS_EVERY: int = 25
+# 8004scan free tier is 50 rpm (~1.2 s/request). Sleep 1.5 s between
+# detail requests to stay safely under the limit and avoid 429s.
+DEFAULT_DETAIL_SLEEP_S: float = 1.5
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -57,6 +60,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Page size for the upstream /agents listing request "
             f"(default: {DEFAULT_PAGE_SIZE}; the upstream caps at ~200)."
+        ),
+    )
+    parser.add_argument(
+        "--detail-sleep",
+        type=float,
+        default=DEFAULT_DETAIL_SLEEP_S,
+        help=(
+            "Seconds to sleep between per-agent detail requests "
+            f"(default: {DEFAULT_DETAIL_SLEEP_S}). Tune up if you hit 429s; "
+            "tune down if you have a Pro API key."
         ),
     )
     return parser.parse_args(argv)
@@ -88,6 +101,7 @@ async def _discover_bsc_token_ids(
 async def _enrich_and_upsert(
     client: Client8004Scan,
     token_ids: list[int],
+    detail_sleep_s: float,
 ) -> tuple[int, int]:
     """For each token_id, fetch the full detail and upsert.
 
@@ -116,6 +130,9 @@ async def _enrich_and_upsert(
                     "seed enrich: progress=%s/%s upserted=%s not_found=%s",
                     idx, len(token_ids), upserted, not_found,
                 )
+            # Stay under the 50 rpm free tier (1.2 s/request).
+            if idx < len(token_ids) and detail_sleep_s > 0:
+                await asyncio.sleep(detail_sleep_s)
     return upserted, not_found
 
 
@@ -131,6 +148,8 @@ async def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("--limit must be > 0")
     if args.page_size <= 0:
         raise SystemExit("--page-size must be > 0")
+    if args.detail_sleep < 0:
+        raise SystemExit("--detail-sleep must be >= 0")
 
     if not os.environ.get("8004SCAN_API_KEY", "").strip():
         logger.warning("8004SCAN_API_KEY not set; rate limit ~50 rpm (Pro tier 500 rpm)")
@@ -145,7 +164,9 @@ async def main(argv: Sequence[str] | None = None) -> int:
             "seed discover: fetched=%s bsc_candidates=%s skipped_wrong_chain=%s",
             fetched, len(token_ids), skipped_wrong_chain,
         )
-        upserted, not_found = await _enrich_and_upsert(client, token_ids)
+        upserted, not_found = await _enrich_and_upsert(
+            client, token_ids, args.detail_sleep
+        )
 
     duration = time.monotonic() - started
     print(
