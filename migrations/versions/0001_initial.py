@@ -80,12 +80,14 @@ def upgrade() -> None:
     # The category GENERATED column follows the design D3 expression:
     # x402 → 'rebalancing'; 'oasf' in supported_protocols → 'rebalancing';
     # else 'other'. STORED so the btree on `category` works.
+    #
+    # Postgres rejects subqueries in GENERATED expressions, so the 'oasf
+    # in supported_protocols' check has to use the `?` JSONB containment
+    # operator, which is IMMUTABLE and therefore allowed.
     category_sql = (
         "CASE "
         "WHEN x402_supported THEN 'rebalancing' "
-        "WHEN 'oasf' = ANY (ARRAY("
-        "SELECT jsonb_array_elements_text(supported_protocols)"
-        ")) THEN 'rebalancing' "
+        "WHEN supported_protocols ? 'oasf' THEN 'rebalancing' "
         "ELSE 'other' "
         "END"
     )

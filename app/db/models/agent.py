@@ -78,14 +78,17 @@ class AgentCache(Base):
     # filtered directly. The expression follows the design's MVP mapping:
     # x402 → rebalancing, oasf → rebalancing, else other. The Python
     # `services/categories.py` may later UPDATE this for richer rows.
+    #
+    # The 'oasf in supported_protocols' branch uses the `?` JSONB
+    # containment operator because Postgres rejects subqueries in
+    # GENERATED column expressions. See migration 0001_initial for the
+    # matching SQL.
     category: Mapped[str] = mapped_column(
         Text,
         Computed(
             "CASE "
             "WHEN x402_supported THEN 'rebalancing' "
-            "WHEN 'oasf' = ANY (ARRAY("
-            "SELECT jsonb_array_elements_text(supported_protocols)"
-            ")) THEN 'rebalancing' "
+            "WHEN supported_protocols ? 'oasf' THEN 'rebalancing' "
             "ELSE 'other' "
             "END",
             persisted=True,
