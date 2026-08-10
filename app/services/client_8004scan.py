@@ -46,6 +46,10 @@ DEFAULT_MAX_CONCURRENCY: int = 4
 _TIMEOUT: httpx.Timeout = httpx.Timeout(
     connect=5.0, read=30.0, write=10.0, pool=5.0
 )
+#: Consecutive 429s tolerated by `iter_agents` before it stops gracefully.
+_MAX_PAGE_RATE_LIMIT_RETRIES: int = 5
+#: Wait between page retries after a 429 (free-tier bucket resets ~60s).
+_PAGE_RATE_LIMIT_BACKOFF_S: float = 60.0
 
 
 # ---------------------------------------------------------------------------
@@ -384,13 +388,44 @@ class Client8004Scan:
         API is not strict on `chain_id` (id 11) so the client filter is
         mandatory. `page_delay` sleeps between page requests so callers
         can stay under the free-tier 50 rpm limit (1.2s/request).
+
+        Rate-limit resilience: a 429 that outlives the per-request tenacity
+        budget raises `UpstreamRateLimit`. Instead of letting that abort the
+        whole listing (and with it the two-phase sync), we wait for the rate
+        bucket to reset (~60s) and retry the same page. After
+        `_MAX_PAGE_RATE_LIMIT_RETRIES` consecutive failures we stop the
+        iterator gracefully (return, not raise) so the caller keeps whatever
+        it already collected. Callers that prefer strict failure can wrap
+        the iteration in their own try/except.
         """
         page = 1
+        rate_limit_strikes = 0
         while True:
-            data = await self._request_json(
-                "/agents",
-                params={"chain_id": chain_id, "page": page, "page_size": page_size},
-            )
+            try:
+                data = await self._request_json(
+                    "/agents",
+                    params={"chain_id": chain_id, "page": page, "page_size": page_size},
+                )
+            except UpstreamRateLimit as exc:
+                rate_limit_strikes += 1
+                if rate_limit_strikes > _MAX_PAGE_RATE_LIMIT_RETRIES:
+                    logger.warning(
+                        "iter_agents: giving up after %s rate-limit retries "
+                        "on page %s; returning partial listing",
+                        rate_limit_strikes, page,
+                    )
+                    return
+                # The 50 rpm bucket resets over a minute; Retry-After is
+                # usually absent on the public API, so wait a full reset.
+                logger.warning(
+                    "iter_agents: rate limited on page %s (strike %s/%s); "
+                    "waiting %ss before retrying",
+                    page, rate_limit_strikes, _MAX_PAGE_RATE_LIMIT_RETRIES,
+                    _PAGE_RATE_LIMIT_BACKOFF_S,
+                )
+                await asyncio.sleep(_PAGE_RATE_LIMIT_BACKOFF_S)
+                continue
+            rate_limit_strikes = 0
             if not data:
                 return
             # 8004scan wraps every response in `{"success": true, "data": ...}`.

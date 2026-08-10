@@ -45,6 +45,7 @@ from app.services.categories import canonical_agent_id, compute_category
 from app.services.client_8004scan import (
     Client8004Scan,
     UpstreamError,
+    UpstreamRateLimit,
     UpstreamUnavailable,
 )
 
@@ -63,6 +64,9 @@ PROGRESS_EVERY: int = 100
 #: requests to stay under the limit. Pass 0 to disable (only safe with
 #: a Pro API key).
 DEFAULT_DETAIL_SLEEP_S: float = 1.5
+#: Wait for the rate bucket to reset when a detail request hits a 429
+#: that outlives the client's tenacity budget.
+_ENRICH_RATE_LIMIT_BACKOFF_S: float = 60.0
 
 
 # ---------------------------------------------------------------------------
@@ -399,6 +403,17 @@ async def _enrich_and_upsert(
     for idx, token_id in enumerate(token_ids, start=1):
         try:
             agent = await client.get_agent(BSC_CHAIN_ID, token_id)
+        except UpstreamRateLimit as exc:
+            # The whole batch will keep hitting 429; wait for the bucket
+            # to reset before the next agent instead of burning strikes.
+            logger.warning(
+                "rate limited at token_id=%s; waiting %ss before continuing",
+                token_id, _ENRICH_RATE_LIMIT_BACKOFF_S,
+            )
+            await asyncio.sleep(_ENRICH_RATE_LIMIT_BACKOFF_S)
+            failed += 1
+            await _record_failure(session, await _ensure_sync_state(session), token_id)
+            continue
         except UpstreamUnavailable as exc:
             logger.error("Upstream unavailable at token_id=%s: %s", token_id, exc)
             failed += 1
