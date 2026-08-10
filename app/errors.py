@@ -101,15 +101,116 @@ class UpstreamUnavailable(AppError):
     code = "upstream_unavailable"
 
 
+# ---------------------------------------------------------------------------
+# x402 payment tree (FU-2, design id 52 D6)
+# ---------------------------------------------------------------------------
+
+
+class PaymentError(AppError):
+    """Base for x402 payment-domain failures (design id 52, D6)."""
+
+    status_code = 500
+    code = "payment_error"
+
+
+class NoPayTo(PaymentError):
+    """Hire for an agent without a wallet → 422 (Q6, no owner fallback)."""
+
+    status_code = 422
+    code = "no_pay_to"
+
+
+class InvalidEnvelope(PaymentError):
+    """X-PAYMENT is not base64 JSON or misses required fields (X3)."""
+
+    status_code = 400
+    code = "invalid_payment_envelope"
+
+
+class UnsupportedRail(PaymentError):
+    """Envelope uses a rail v1 does not support (permit2; Q2)."""
+
+    status_code = 400
+    code = "unsupported_rail"
+
+
+class WrongChain(PaymentError):
+    """Envelope targets a different chain, or a token not offered."""
+
+    status_code = 403
+    code = "payment_wrong_chain"
+
+
+class AmountMismatch(PaymentError):
+    """Envelope amount differs from the quoted challenge amount."""
+
+    status_code = 403
+    code = "payment_amount_mismatch"
+
+
+class PayToMismatch(PaymentError):
+    """Authorization pays a different recipient than the hire's pay_to."""
+
+    status_code = 403
+    code = "payment_pay_to_mismatch"
+
+
+class SignatureMismatch(PaymentError):
+    """EIP-712 recovery does not match the payer (X4)."""
+
+    status_code = 403
+    code = "signature_mismatch"
+
+
+class ChallengeExpired(PaymentError):
+    """Authorization validity window passed (X7)."""
+
+    status_code = 409
+    code = "challenge_expired"
+
+
+class AlreadyPaid(PaymentError):
+    """Hire is not pending (paid/failed/cancelled) (X6/H4)."""
+
+    status_code = 409
+    code = "already_paid"
+
+
+class BroadcastFailed(PaymentError):
+    """RPC error, timeout, or onchain revert while settling; hire → failed."""
+
+    status_code = 503
+    code = "payment_broadcast_failed"
+
+
+class PaymentGatewayUnconfigured(PaymentError):
+    """Empty facilitator key — payments disabled."""
+
+    status_code = 503
+    code = "payment_gateway_unconfigured"
+
+
 __all__ = [
+    "AlreadyPaid",
+    "AmountMismatch",
     "AppError",
     "AuthRequired",
+    "BroadcastFailed",
+    "ChallengeExpired",
     "Conflict",
     "Forbidden",
+    "InvalidEnvelope",
+    "NoPayTo",
     "NotFound",
+    "PayToMismatch",
+    "PaymentError",
+    "PaymentGatewayUnconfigured",
+    "SignatureMismatch",
+    "UnsupportedRail",
     "UpstreamRateLimit",
     "UpstreamUnavailable",
     "ValidationError",
+    "WrongChain",
     "is_htmx_request",
     "register_error_handlers",
     "to_envelope",
@@ -202,6 +303,18 @@ def register_error_handlers(app: FastAPI) -> None:
         Conflict,
         UpstreamRateLimit,
         UpstreamUnavailable,
+        PaymentError,
+        NoPayTo,
+        InvalidEnvelope,
+        UnsupportedRail,
+        WrongChain,
+        AmountMismatch,
+        PayToMismatch,
+        SignatureMismatch,
+        ChallengeExpired,
+        AlreadyPaid,
+        BroadcastFailed,
+        PaymentGatewayUnconfigured,
     ):
         app.add_exception_handler(cls, _handle_app_error)
 
