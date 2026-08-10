@@ -84,6 +84,11 @@ services:
       POSTGRES_DB: bnb_agent
       DATABASE_URL: postgresql+asyncpg://bnb:CVc9et1hDP3PYwRILMFiZkXE@db:5432/bnb_agent
       SECRET_KEY: BWe6k5vSV47iRy4FyXvzkgwdav4apdTeaiJpTJOnqxY
+      # API key for the /api/sync endpoint (POST /api/sync + GET
+      # /api/sync/status). Inlined for the same Dokploy limitation as the
+      # other secrets: panel env-vars are not injected into the container,
+      # so this MUST live in the compose file to reach the app.
+      SYNC_API_KEY: YdjTooGdDuTffvCOMudx5ZL3eMQYjZIy0N8upFvv6hk
     ports:
       - "8000:8000"
     # Preflight + alembic + uvicorn. The preflight block makes any missing
