@@ -1,12 +1,25 @@
 """Idempotent sync worker for AgentCache.
 
-Walks BSC `token_id` and upserts into `agent_cache` via
-`ON CONFLICT (agent_id) DO UPDATE`. Checkpoints progress in the singleton
-`sync_state` row so a kill mid-walk resumes cleanly (spec #23 S7).
+Two-phase sync that mirrors what the seed script does:
 
-See `sdd/marketplace-scaffold/spec/sync-worker` (#23) for the requirements
-and scenarios. Design decisions D3 (generated category + post-pass) and D7
-(FIFO cap 1000 for failed_token_ids) are enforced here.
+  1. **Discovery** — paginated `iter_agents` listing (200 per page,
+     client-side BSC filter). Cheap: 1 HTTP request per page.
+  2. **Enrichment** — per-token `get_agent` detail request, upsert
+     into `agent_cache` via `ON CONFLICT (agent_id) DO UPDATE`.
+     Heavier: 1 request per agent, captures the full ~50 column
+     payload (services, raw_metadata, parse_status, quality scores,
+     on-chain provenance, endpoint health).
+
+Idempotent via the ON CONFLICT path; checkpoint progress in the
+singleton `sync_state.last_token_id` row so a kill mid-walk resumes
+cleanly on the next run (spec #23 S7). The checkpoint is informational
+under the new flow — discovery is upstream-order, not token-order —
+but the column stays for back-compat with anyone watching it.
+
+See `sdd/marketplace-scaffold/spec/sync-worker` (#23) for the
+requirements and scenarios. Design decisions D3 (generated category
++ post-pass) and D7 (FIFO cap 1000 for failed_token_ids) are enforced
+here.
 """
 from __future__ import annotations
 
@@ -37,13 +50,19 @@ from app.services.client_8004scan import (
 
 logger = logging.getLogger(__name__)
 
-#: Default batch size for incremental runs (spec R1).
+#: Default batch size for incremental runs (spec R1). Limits how many
+#: agents the worker enriches per run; full coverage still happens
+#: over many runs.
 DEFAULT_INCREMENTAL_BATCH: int = 100
 #: Default batch size for full runs. Larger because we expect a longer,
 #: lower-priority window (Dokploy cron Sunday 03:00 UTC).
 DEFAULT_FULL_BATCH: int = 200
 #: How often to log a progress line (records walked).
 PROGRESS_EVERY: int = 100
+#: Free tier is 50 rpm; sleep this long between per-agent detail
+#: requests to stay under the limit. Pass 0 to disable (only safe with
+#: a Pro API key).
+DEFAULT_DETAIL_SLEEP_S: float = 1.5
 
 
 # ---------------------------------------------------------------------------
@@ -329,24 +348,52 @@ async def _maybe_enrich_category(
 
 
 # ---------------------------------------------------------------------------
-# Walk
+# Two-phase sync
 # ---------------------------------------------------------------------------
 
 
-async def _walk(
+async def _discover_bsc_token_ids(
+    client: Client8004Scan, limit: int, page_size: int
+) -> tuple[list[int], int, int]:
+    """Phase 1: walk the paginated listing to collect BSC token_ids.
+
+    Returns (token_ids, fetched_total, skipped_wrong_chain).
+    The 8004scan /agents endpoint isn't strict about server-side
+    `chain_id` filtering, so we filter client-side (BSC = 56).
+    """
+    token_ids: list[int] = []
+    fetched = 0
+    skipped_wrong_chain = 0
+    async for agent in client.iter_agents(chain_id=BSC_CHAIN_ID, page_size=page_size):
+        fetched += 1
+        if agent.chain_id is not None and int(agent.chain_id) != BSC_CHAIN_ID:
+            skipped_wrong_chain += 1
+            continue
+        if agent.token_id is None:
+            continue
+        token_ids.append(int(agent.token_id))
+        if len(token_ids) >= limit:
+            break
+    return token_ids, fetched, skipped_wrong_chain
+
+
+async def _enrich_and_upsert(
     session: AsyncSession,
     client: Client8004Scan,
-    start: int,
-    end: int,
-) -> tuple[int, int, int, int, int]:
-    """Walk token_ids in [start, end). Returns (last_seen, upserted, skipped, failed, last_token_id)."""
-    upserted = 0
-    skipped = 0
-    failed = 0
-    last_seen = start - 1
+    token_ids: list[int],
+    detail_sleep_s: float,
+) -> tuple[int, int, int, int]:
+    """Phase 2: per-token get_agent + upsert.
 
-    for token_id in range(start, end):
-        last_seen = token_id
+    Returns (upserted, failed, last_token_id, walked). Sleeps
+    `detail_sleep_s` between requests to stay under the free
+    tier 50 rpm rate limit.
+    """
+    upserted = 0
+    failed = 0
+    last_token_id = -1
+
+    for idx, token_id in enumerate(token_ids, start=1):
         try:
             agent = await client.get_agent(BSC_CHAIN_ID, token_id)
         except UpstreamUnavailable as exc:
@@ -361,13 +408,15 @@ async def _walk(
             continue
         if agent is None:
             # 404 — gap, skip but record.
-            skipped += 1
+            failed += 1
             await _record_failure(session, await _ensure_sync_state(session), token_id)
             continue
-        # Chain filter (defense in depth — client already filters).
         if agent.chain_id is not None and int(agent.chain_id) != BSC_CHAIN_ID:
-            skipped += 1
+            # Defense in depth: the listing should have filtered, but
+            # the token_id could in theory have been re-minted on a
+            # different chain.
             continue
+
         # Force a consistent agent_id even if the upstream supplies one.
         if not agent.agent_id or not str(agent.agent_id).startswith(f"{BSC_CHAIN_ID}:"):
             agent.agent_id = build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id)
@@ -378,13 +427,20 @@ async def _walk(
         await _upsert_agent(session, row)
         await _maybe_enrich_category(session, agent, row["agent_id"])
         upserted += 1
+        last_token_id = max(last_token_id, token_id)
 
-        if token_id % PROGRESS_EVERY == 0:
+        if upserted % PROGRESS_EVERY == 0 or idx == len(token_ids):
             await session.commit()
-            logger.info("sync: walked=%s upserted=%s skipped=%s failed=%s", token_id, upserted, skipped, failed)
+            logger.info(
+                "sync: progress=%s/%s upserted=%s failed=%s last_token_id=%s",
+                idx, len(token_ids), upserted, failed, last_token_id,
+            )
 
-    await session.commit()
-    return last_seen, upserted, skipped, failed, end - 1
+        # Stay under the 50 rpm free tier (1.2 s/request).
+        if idx < len(token_ids) and detail_sleep_s > 0:
+            await asyncio.sleep(detail_sleep_s)
+
+    return upserted, failed, last_token_id, len(token_ids)
 
 
 # ---------------------------------------------------------------------------
@@ -392,47 +448,58 @@ async def _walk(
 # ---------------------------------------------------------------------------
 
 
-async def sync_incremental(batch: int = DEFAULT_INCREMENTAL_BATCH) -> SyncReport:
-    """Resume from `last_token_id + 1` and walk `batch` more records."""
-    return await _run_sync(start_offset=1, batch=batch, label="incremental")
+async def sync_incremental(
+    batch: int = DEFAULT_INCREMENTAL_BATCH,
+    detail_sleep_s: float = DEFAULT_DETAIL_SLEEP_S,
+) -> SyncReport:
+    """Discover `batch` BSC agents via iter_agents, then enrich them
+    via get_agent + upsert. Idempotent — safe to re-run any time."""
+    return await _run_sync(batch=batch, label="incremental", detail_sleep_s=detail_sleep_s)
 
 
-async def sync_full(batch: int = DEFAULT_FULL_BATCH) -> SyncReport:
-    """Re-walk from token_id 0. Idempotent via ON CONFLICT."""
-    return await _run_sync(start_offset=0, batch=batch, label="full")
+async def sync_full(
+    batch: int = DEFAULT_FULL_BATCH,
+    detail_sleep_s: float = DEFAULT_DETAIL_SLEEP_S,
+) -> SyncReport:
+    """Same as sync_incremental but with the full-batch default. Re-runs
+    are no-ops on existing rows thanks to ON CONFLICT (agent_id) DO UPDATE."""
+    return await _run_sync(batch=batch, label="full", detail_sleep_s=detail_sleep_s)
 
 
-async def _run_sync(start_offset: int, batch: int, label: str) -> SyncReport:
+async def _run_sync(batch: int, label: str, detail_sleep_s: float) -> SyncReport:
     from app.db.session import AsyncSessionLocal
 
     started = time.monotonic()
-    logger.info("sync %s: start_offset=%s batch=%s", label, start_offset, batch)
+    logger.info("sync %s: start batch=%s detail_sleep_s=%s", label, batch, detail_sleep_s)
 
     async with AsyncSessionLocal() as session, Client8004Scan() as client:
-        state = await _ensure_sync_state(session)
-        if start_offset == 0:
-            start = 0
-        else:
-            start = int(state.last_token_id) + 1
-        end = start + batch
-
-        last_seen, upserted, skipped, failed, last_id = await _walk(
-            session, client, start, end
+        token_ids, fetched, skipped_wrong_chain = await _discover_bsc_token_ids(
+            client, batch, page_size=200,
+        )
+        logger.info(
+            "sync %s: discover fetched=%s bsc_candidates=%s skipped_wrong_chain=%s",
+            label, fetched, len(token_ids), skipped_wrong_chain,
         )
 
-        # Update checkpoint + last_sync_at.
+        upserted, failed, last_token_id, walked = await _enrich_and_upsert(
+            session, client, token_ids, detail_sleep_s,
+        )
+
+        # Update checkpoint + last_sync_at. last_token_id is the max
+        # token_id seen in this batch (informational under the new
+        # upstream-order flow; the column stays for back-compat).
         state = await _ensure_sync_state(session)
-        state.last_token_id = last_id
+        state.last_token_id = last_token_id
         state.last_sync_at = datetime.now(tz=timezone.utc)
         await session.commit()
 
     duration = time.monotonic() - started
     report = SyncReport(
-        walked=max(0, last_seen - start + 1),
+        walked=walked,
         upserted=upserted,
-        skipped=skipped,
+        skipped=skipped_wrong_chain,
         failed=failed,
-        last_token_id=last_id,
+        last_token_id=last_token_id,
         duration_s=duration,
     )
     logger.info("sync %s: %s", label, report)
@@ -442,6 +509,9 @@ async def _run_sync(start_offset: int, batch: int, label: str) -> SyncReport:
 # Re-export for the CLI.
 __all__ = [
     "Client8004Scan",
+    "DEFAULT_DETAIL_SLEEP_S",
+    "DEFAULT_FULL_BATCH",
+    "DEFAULT_INCREMENTAL_BATCH",
     "SyncReport",
     "sync_full",
     "sync_incremental",

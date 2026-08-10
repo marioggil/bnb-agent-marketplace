@@ -27,5 +27,8 @@ htmlcov/
 .idea/
 .DS_Store
 
+# Playwright MCP artifacts (session screenshots/snapshots)
+.playwright-mcp/
+
 # Atl cache
 .atl/
