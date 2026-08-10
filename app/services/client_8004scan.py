@@ -375,13 +375,15 @@ class Client8004Scan:
         self,
         chain_id: int = 56,
         page_size: int = 200,
+        page_delay: float = 0.0,
     ) -> AsyncIterator[AgentResponse]:
         """Yield agents, filtering client-side to `chain_id` (R2).
 
         Paginates by appending `?page=N&page_size=page_size` until the
         upstream returns an empty page or we hit a hard stop. The 8004scan
         API is not strict on `chain_id` (id 11) so the client filter is
-        mandatory.
+        mandatory. `page_delay` sleeps between page requests so callers
+        can stay under the free-tier 50 rpm limit (1.2s/request).
         """
         page = 1
         while True:
@@ -426,6 +428,8 @@ class Client8004Scan:
             page += 1
             if page > 10_000:  # safety stop — ~2M rows
                 return
+            if page_delay > 0:
+                await asyncio.sleep(page_delay)
 
     async def get_agent(self, chain_id: int, token_id: int) -> AgentResponse | None:
         """Fetch a single agent. Returns `None` on 404 (R7)."""

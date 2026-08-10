@@ -353,18 +353,21 @@ async def _maybe_enrich_category(
 
 
 async def _discover_bsc_token_ids(
-    client: Client8004Scan, limit: int, page_size: int
+    client: Client8004Scan, limit: int, page_size: int, page_delay: float
 ) -> tuple[list[int], int, int]:
     """Phase 1: walk the paginated listing to collect BSC token_ids.
 
     Returns (token_ids, fetched_total, skipped_wrong_chain).
     The 8004scan /agents endpoint isn't strict about server-side
     `chain_id` filtering, so we filter client-side (BSC = 56).
+    `page_delay` paces the listing requests (free tier is 50 rpm).
     """
     token_ids: list[int] = []
     fetched = 0
     skipped_wrong_chain = 0
-    async for agent in client.iter_agents(chain_id=BSC_CHAIN_ID, page_size=page_size):
+    async for agent in client.iter_agents(
+        chain_id=BSC_CHAIN_ID, page_size=page_size, page_delay=page_delay
+    ):
         fetched += 1
         if agent.chain_id is not None and int(agent.chain_id) != BSC_CHAIN_ID:
             skipped_wrong_chain += 1
@@ -474,7 +477,7 @@ async def _run_sync(batch: int, label: str, detail_sleep_s: float) -> SyncReport
 
     async with AsyncSessionLocal() as session, Client8004Scan() as client:
         token_ids, fetched, skipped_wrong_chain = await _discover_bsc_token_ids(
-            client, batch, page_size=200,
+            client, batch, page_size=200, page_delay=detail_sleep_s,
         )
         logger.info(
             "sync %s: discover fetched=%s bsc_candidates=%s skipped_wrong_chain=%s",
