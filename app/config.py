@@ -13,6 +13,7 @@ Design: D5 (config boundary), id 26.
 """
 from __future__ import annotations
 
+from decimal import Decimal
 from functools import lru_cache
 from typing import Final
 
@@ -34,6 +35,28 @@ __all__ = [
 # The `TYPE_CHECKING` guard would not help because pydantic-settings
 # re-resolves types at runtime; the cost is one extra import at module load.
 from app.db.models.auth_nonce import NONCE_TTL_SECONDS  # noqa: E402
+
+#: BSC chain ids the marketplace can settle on. Testnet (97) is the default;
+#: mainnet (56) is a demo-day override (design id 52, D5).
+X402_CHAIN_TESTNET: Final[int] = 97
+X402_CHAIN_MAINNET: Final[int] = 56
+
+#: $U (United Stables) pinned per chain from @altananetwork/x402-server
+#: `tokens.ts` at design time (design id 52, D2) — both verified against the
+#: live `DOMAIN_SEPARATOR()`. Public addresses, not secrets.
+X402_U_TOKEN_ADDRESS_MAINNET: Final[str] = "0xcE24439F2D9C6a2289F741120FE202248B666666"
+X402_U_TOKEN_ADDRESS_TESTNET: Final[str] = "0xc70B8741B8B07A6d61E54fd4B20f22Fa648E5565"
+
+#: EIP-712 domain facts of $U (design id 52, D2/D4). `extra` in the challenge
+#: and the typed-data domain both use these.
+U_TOKEN_NAME: Final[str] = "United Stables"
+U_TOKEN_VERSION: Final[str] = "1"
+
+#: Default public RPC per chain; `X402_RPC_URL` overrides.
+_X402_RPC_DEFAULTS: Final[dict[int, str]] = {
+    X402_CHAIN_TESTNET: "https://bsc-testnet-rpc.publicnode.com",
+    X402_CHAIN_MAINNET: "https://bsc-rpc.publicnode.com",
+}
 
 
 class Settings(BaseSettings):
@@ -112,6 +135,60 @@ class Settings(BaseSettings):
         description="Soft cap on the rate the sync worker hits the upstream.",
     )
 
+    # ---- x402 payments (FU-2, design id 52 D5) ---------------------------
+    # BSC chain payments settle on: 97 (testnet, default) or 56 (mainnet,
+    # demo-day override). The $U address and default RPC follow the chain.
+    x402_chain_id: int = Field(
+        default=X402_CHAIN_TESTNET,
+        alias="X402_CHAIN_ID",
+        ge=1,
+        description="BSC chain id for payments (97 testnet default, 56 demo override).",
+    )
+    # Facilitator EOA private key (hex, with or without 0x). The facilitator
+    # only ever pays gas — funds are recipient-bound inside the signed
+    # envelope. Empty string ⇒ pay endpoint answers 503
+    # `payment_gateway_unconfigured`. Never committed; `.env.example` only
+    # ships a placeholder (spec B3).
+    x402_facilitator_key: str = Field(
+        default="",
+        alias="X402_FACILITATOR_KEY",
+        description="Facilitator EOA key for gas only; empty disables payments.",
+    )
+    # Optional RPC override. When empty, `x402_rpc_url_resolved` falls back
+    # to the per-chain public node.
+    x402_rpc_url: str = Field(
+        default="",
+        alias="X402_RPC_URL",
+        description="Optional BSC RPC override; per-chain default otherwise.",
+    )
+    # Flat hire price in USD (Q1). Stored on the hire as $U units (18
+    # decimals) and converted to wei for the challenge amount.
+    x402_default_price_usd: Decimal = Field(
+        default=Decimal("1.00"),
+        alias="X402_DEFAULT_PRICE_USD",
+        ge=Decimal("0"),
+        description="Flat price of a hire in USD; converted to $U wei.",
+    )
+    # Pinned $U addresses per chain (D2). Public constants — overridable for
+    # mirror/test deployments.
+    x402_u_token_address_56: str = Field(
+        default=X402_U_TOKEN_ADDRESS_MAINNET,
+        alias="X402_U_TOKEN_ADDRESS_56",
+        description="Pinned $U address on BSC mainnet (56).",
+    )
+    x402_u_token_address_97: str = Field(
+        default=X402_U_TOKEN_ADDRESS_TESTNET,
+        alias="X402_U_TOKEN_ADDRESS_97",
+        description="Pinned $U address on BSC testnet (97).",
+    )
+    # Permit2 is declared for future rails (permit2-exact USDT) but is
+    # unconsumed in v1 (Q2).
+    x402_permit2_address: str = Field(
+        default="0x000000000022D473030F116dDEE9F6B43aC78BA3",
+        alias="X402_PERMIT2_ADDRESS",
+        description="Permit2 address; reserved for future rails (unused in v1).",
+    )
+
     @field_validator("secret_key")
     @classmethod
     def _secret_key_not_empty(cls, v: str) -> str:
@@ -129,6 +206,31 @@ class Settings(BaseSettings):
     @classmethod
     def _log_level_upper(cls, v: str) -> str:
         return v.upper()
+
+    # ------------------------------------------------------------------
+    # Derived helpers — resolve the per-chain values the payment service
+    # consumes. Kept as properties (not fields) so the env surface stays
+    # flat and the chain switch is a single `X402_CHAIN_ID` flip (Q3).
+    # ------------------------------------------------------------------
+
+    @property
+    def x402_rpc_url_resolved(self) -> str:
+        """Effective RPC URL: `X402_RPC_URL` override, else the chain default."""
+        if self.x402_rpc_url:
+            return self.x402_rpc_url
+        return _X402_RPC_DEFAULTS.get(self.x402_chain_id, _X402_RPC_DEFAULTS[X402_CHAIN_TESTNET])
+
+    @property
+    def x402_u_token_address(self) -> str:
+        """$U address pinned for the configured chain (D2)."""
+        if self.x402_chain_id == X402_CHAIN_MAINNET:
+            return self.x402_u_token_address_56
+        return self.x402_u_token_address_97
+
+    @property
+    def x402_payments_configured(self) -> bool:
+        """True when a facilitator key is present (pay endpoint usable)."""
+        return bool(self.x402_facilitator_key.strip())
 
 
 def get_settings() -> Settings:
