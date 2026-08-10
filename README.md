@@ -184,6 +184,37 @@ worker logs a `[WARN]` on startup and falls back to free-tier limits.
 
 ---
 
+## Sync API
+
+The `/api/sync` endpoints let you trigger sync runs over HTTP (curl, cron, a
+future admin UI) instead of shelling into the container. Both endpoints
+require the `X-API-Key` header to match the `SYNC_API_KEY` env var; with
+`SYNC_API_KEY` unset they answer `503` (the API is disabled).
+
+```bash
+# start an incremental run (default; body optional)
+curl -X POST https://your-app.example/api/sync \
+     -H "X-API-Key: $SYNC_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"mode":"incremental"}'
+# -> 202 {"status":"started","mode":"incremental"} | 409 if already running
+
+# start a full run
+curl -X POST https://your-app.example/api/sync \
+     -H "X-API-Key: $SYNC_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"mode":"full"}'
+
+# checkpoint + running state
+curl https://your-app.example/api/sync/status -H "X-API-Key: $SYNC_API_KEY"
+# -> {"running": false, "last_token_id": 42, "last_sync_at": "...", "failed_count": 0}
+```
+
+The run happens in the background; `POST` returns as soon as it is
+dispatched. A second `POST` while a run is in flight gets `409`.
+
+---
+
 ## Wallet auth (curl preview)
 
 The full auth flow ships in **PR-C** (EIP-191 `personal_sign`, single-use
@@ -276,6 +307,7 @@ list (grouped by concern) is:
 | `SESSION_TTL_MIN` | `60` | session lifetime in minutes |
 | `LOG_LEVEL` | `INFO` | uvicorn + app loggers |
 | `WORKER_RATE_PER_SEC` | `4` | soft cap on sync worker upstream rate |
+| `SYNC_API_KEY` | empty | optional shared secret for the remote sync API (`POST/GET /api/sync`); empty disables those endpoints (503) |
 | `POSTGRES_USER` | `bnb` | docker-compose `db` user |
 | `POSTGRES_PASSWORD` | `change-me` | docker-compose `db` password |
 | `POSTGRES_DB` | `bnb_agent` | docker-compose `db` database name |

@@ -89,6 +89,15 @@ class Settings(BaseSettings):
         ge=1,
         description="Session lifetime in minutes (default 60).",
     )
+    sync_api_key: str | None = Field(
+        default=None,
+        alias="SYNC_API_KEY",
+        description=(
+            "Optional shared secret protecting the remote sync API "
+            "(POST /api/sync, GET /api/sync/status). Empty/None disables "
+            "those endpoints (they answer 503)."
+        ),
+    )
 
     # ---- Observability / worker -----------------------------------------
     log_level: str = Field(

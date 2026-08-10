@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.db.session import AsyncSessionLocal, engine
 from app.errors import register_error_handlers
-from app.routers import agents, auth, favorites, healthz, hires, pages
+from app.routers import agents, auth, favorites, healthz, hires, pages, sync
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,7 @@ def create_app() -> FastAPI:
     app.include_router(favorites.router)
     app.include_router(hires.router)
     app.include_router(pages.router)
+    app.include_router(sync.router)
     # Error handlers.
     register_error_handlers(app)
     return app
