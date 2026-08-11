@@ -90,7 +90,7 @@ async def create_hire(
 ) -> HireCreateOut:
     """Create a pending hire + B402 challenge (spec X1/X2, H1)."""
     agent = await db.scalar(
-        select(AgentCache.agent_id, AgentCache.agent_wallet).where(
+        select(AgentCache).where(
             AgentCache.agent_id == payload.agent_id
         )
     )

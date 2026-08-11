@@ -128,7 +128,11 @@ async def post_logout(
     _user: Annotated[User | None, Depends(get_current_user)] = None,  # type: ignore[assignment]
 ) -> Response:
     _clear_session_cookie(response)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    # Return the SAME response object so the Set-Cookie (Max-Age=0) header
+    # survives; building a new Response here would drop it. Set the status
+    # explicitly because the injected response defaults to 200.
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
 
 
 # Re-export for main.py wiring.

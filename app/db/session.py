@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
-from typing import Final
+from typing import Any, Final
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -45,14 +45,18 @@ def _build_database_url() -> str:
 
 
 def make_engine(url: str | None = None) -> AsyncEngine:
-    """Build the async engine. Exposed for tests that need to inject a URL."""
-    return create_async_engine(
-        url or _build_database_url(),
-        pool_size=POOL_SIZE,
-        max_overflow=MAX_OVERFLOW,
-        pool_pre_ping=True,
-        future=True,
-    )
+    """Build the async engine. Exposed for tests that need to inject a URL.
+
+    Pool sizing args are only valid for the Postgres/asyncpg dialect. When
+    the URL targets sqlite (tests, aiosqlite in-memory), SQLAlchemy 2.0.51+
+    rejects `pool_size`/`max_overflow` for StaticPool — so those kwargs are
+    omitted for non-Postgres drivers.
+    """
+    resolved = url or _build_database_url()
+    pool_kwargs: dict[str, Any] = {"pool_pre_ping": True, "future": True}
+    if resolved.startswith("postgresql"):
+        pool_kwargs.update(pool_size=POOL_SIZE, max_overflow=MAX_OVERFLOW)
+    return create_async_engine(resolved, **pool_kwargs)
 
 
 # Lazy engine + sessionmaker. Importing this module MUST NOT touch the

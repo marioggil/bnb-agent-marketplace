@@ -31,7 +31,7 @@ from datetime import datetime
 from typing import Any, Protocol
 
 import httpx
-from eth_abi import encode_abi
+from eth_abi import encode as eth_abi_encode
 from eth_account import Account
 from eth_account.messages import encode_typed_data
 from eth_utils import keccak
@@ -61,7 +61,7 @@ ZERO_ADDRESS: str = "0x0000000000000000000000000000000000000000"
 
 #: FiatTokenV2_2-style EIP-3009 with a `bytes` signature (settle.ts).
 _TRANSFER_WITH_AUTH_SELECTOR: bytes = keccak(
-    text=b"transferWithAuthorization(address,address,uint256,uint256,uint256,bytes32,bytes)"
+    b"transferWithAuthorization(address,address,uint256,uint256,uint256,bytes32,bytes)"
 )[:4]
 
 _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -233,6 +233,8 @@ def decode_envelope(header: str) -> DecodedPayment:
         raise InvalidEnvelope("envelope must carry x402Version 1 or 2")
     if "resource" not in envelope:
         raise InvalidEnvelope("envelope must echo the challenge resource")
+    if not isinstance(envelope.get("network"), str):
+        raise InvalidEnvelope("envelope must carry network eip155:<chainId>")
 
     payload = envelope.get("payload")
     if not isinstance(payload, dict):
@@ -289,14 +291,16 @@ def _recover_signer(
 ) -> str:
     """EIP-712 recover the payer via eth-account (TransferWithAuthorization)."""
     auth = decoded.authorization
+    # eth-account >= 0.13 uses positional args for encode_typed_data;
+    # keyword form (domain=/types=/message=) was removed.
     typed_data = encode_typed_data(
-        domain={
+        {
             "name": token_cfg.name,
             "version": token_cfg.version,
             "chainId": chain_id,
             "verifyingContract": token_cfg.address,
         },
-        types={
+        {
             "TransferWithAuthorization": [
                 {"name": "from", "type": "address"},
                 {"name": "to", "type": "address"},
@@ -306,7 +310,7 @@ def _recover_signer(
                 {"name": "nonce", "type": "bytes32"},
             ]
         },
-        message={
+        {
             "from": auth["from"],
             "to": auth["to"],
             "value": int(auth["value"]),
@@ -388,7 +392,17 @@ def _transfer_with_authorization_calldata(
     auth: dict[str, Any], signature: str
 ) -> str:
     """ABI-encode `transferWithAuthorization(...)` for the $U contract."""
-    encoded = encode_abi(
+    nonce = auth["nonce"]
+    if isinstance(nonce, str) and nonce.startswith("0x"):
+        nonce_bytes = bytes.fromhex(nonce[2:])
+    elif isinstance(nonce, bytes):
+        nonce_bytes = nonce
+    else:
+        nonce_bytes = int(nonce).to_bytes(32, "big")
+    sig_bytes = (
+        bytes.fromhex(signature[2:]) if isinstance(signature, str) and signature.startswith("0x") else signature
+    )
+    encoded = eth_abi_encode(
         ["address", "address", "uint256", "uint256", "uint256", "bytes32", "bytes"],
         [
             auth["from"],
@@ -396,8 +410,8 @@ def _transfer_with_authorization_calldata(
             int(auth["value"]),
             int(auth["validAfter"]),
             int(auth["validBefore"]),
-            auth["nonce"],
-            signature,
+            nonce_bytes,
+            sig_bytes,
         ],
     )
     return "0x" + _TRANSFER_WITH_AUTH_SELECTOR.hex() + encoded.hex()

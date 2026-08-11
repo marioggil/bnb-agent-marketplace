@@ -153,7 +153,7 @@ async def home(
         # HTMX "load more" appends new cards without a wrapper (spec R4, S3).
         return _render(
             request,
-            "partials/agent_card.html",
+            "partials/agent_card_htmx.html",
             {"items": items, "page": page, "page_size": page_size, "sort": sort,
              "q": q, "category": category, "x402": x402, "has_more": page < total_pages},
         )
@@ -170,6 +170,7 @@ async def home(
             "q": q,
             "category": category,
             "x402": x402,
+            "has_more": page < total_pages,
         },
     )
 
@@ -205,21 +206,28 @@ async def agent_detail(
 
 
 @router.get("/favorites", response_class=HTMLResponse)
-async def favorites(
-    request: Request,
-    user: Annotated[User | None, Depends(get_current_user)] = None,
-) -> HTMLResponse:
+async def favorites(request: Request) -> HTMLResponse:
     """Auth-gated favorites page. Redirects to /auth for anonymous callers (spec S6)."""
-    if user is None:
-        # Both HTMX and direct nav get a redirect so the UX degrades cleanly.
-        from fastapi.responses import RedirectResponse
+    from fastapi.responses import RedirectResponse
 
+    from app.errors import AuthRequired
+    from app.services.auth import SESSION_COOKIE_NAME, _read_session
+
+    # `get_current_user` raises AuthRequired for anonymous callers; the
+    # favorites page wants a clean redirect instead of a 401, so gate on the
+    # session cookie directly and only resolve the user when present.
+    has_session = _read_session(request.cookies.get(SESSION_COOKIE_NAME)) is not None
+    if not has_session:
         if request.headers.get("HX-Request", "").lower() == "true":
             return HTMLResponse(status_code=200, headers={"HX-Redirect": "/auth"})
         return RedirectResponse(url="/auth", status_code=302)
-    async with AsyncSessionLocal() as session:
-        from sqlalchemy import select
+    try:
+        user = await get_current_user(request)
+    except AuthRequired:
+        return RedirectResponse(url="/auth", status_code=302)
+    from sqlalchemy import select
 
+    async with AsyncSessionLocal() as session:
         rows = (
             await session.scalars(
                 select(Favorite).where(Favorite.address == user.address)
