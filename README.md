@@ -117,7 +117,7 @@ Both services have healthchecks; `app` only starts once `db` reports healthy.
 │   ├── services/              # 8004scan client, sync worker, auth, categories
 │   ├── schemas/               # pydantic request/response models
 │   ├── templates/             # base.html + pages/* + partials/*
-│   ├── static/                # css/, js/htmx-2.x.min.js, img/
+│   ├── static/                # css/, js/htmx-2.x.min.js, js/ethers-6.14.min.js, js/payment.js, img/
 │   └── worker/sync.py         # CLI: `python -m app.worker.sync`
 ├── migrations/                # Alembic env + versions/
 ├── tests/                     # smoke tests (respx + aiosqlite)
@@ -239,6 +239,53 @@ The complete working example, including CSRF on `POST /api/favorites` and
 
 ---
 
+## x402 payments (B402)
+
+The marketplace acts as a **B402 merchant + facilitator** (FU-2): hiring an
+agent creates a payment challenge over **$U** (United Stables, `eip3009`
+rail), the browser signs it with ethers v6 (vendored, MetaMask), and the
+facilitator EOA settles on BSC. Flow:
+
+1. **Signed-in user** opens an agent detail page → the Hire CTA shows the
+   flat price (**$1.00**, `X402_DEFAULT_PRICE_USD`) — disabled when the
+   agent has no payment wallet (`agent_wallet`).
+2. Clicking the CTA POSTs `/api/hires` → **201 + B402 challenge**
+   (`x402Version: 2`, `accepts[]` eip3009 $U, `payTo` = agent wallet,
+   `maxTimeoutSeconds` 300).
+3. `app/static/js/payment.js` (ethers v6) signs the EIP-712
+   `TransferWithAuthorization` envelope: random 32-byte nonce,
+   `validAfter = now - 120s`, `validBefore = now + maxTimeoutSeconds`.
+4. POST `/api/hires/{id}/pay` carries the base64 envelope in `X-PAYMENT`
+   (or `PAYMENT-SIGNATURE`). The server verifies chain → token → amount →
+   payTo → validity → signature, then the facilitator broadcasts the
+   settlement and the hire flips to `paid` + `tx_hash`.
+5. The browser redirects to the agent's own `agent_url` (http(s) only) or
+   back to the detail page. Failures leave the hire `failed` with the error
+   shown on the page — never a dead-end.
+
+### Chain switch: testnet 97 → mainnet 56
+
+Testnet (97) is the default. For a demo-day mainnet run, flip one env var —
+the $U address and default RPC follow the chain automatically:
+
+```bash
+X402_CHAIN_ID=56
+X402_FACILITATOR_KEY=<mainnet facilitator key, never committed>
+```
+
+### Facilitator key handling — READ THIS
+
+- The facilitator EOA **only pays gas** — funds are recipient-bound inside
+  the signed envelope (the signature names the `payTo`), so a compromised
+  facilitator key cannot redirect money.
+- `X402_FACILITATOR_KEY` is **env-guarded and never committed**: `.env.example`
+  ships only a `change-me` placeholder. An empty key disables payments
+  (pay → 503 `payment_gateway_unconfigured`).
+- Use a dedicated key per environment (never the testnet key on mainnet),
+  funded with a small BNB balance (~0.01 BNB covers 50+ settlements).
+
+---
+
 ## Alembic workflow
 
 The schema is managed by Alembic with a sync `psycopg2` driver against the
@@ -308,6 +355,12 @@ list (grouped by concern) is:
 | `LOG_LEVEL` | `INFO` | uvicorn + app loggers |
 | `WORKER_RATE_PER_SEC` | `4` | soft cap on sync worker upstream rate |
 | `SYNC_API_KEY` | empty | optional shared secret for the remote sync API (`POST/GET /api/sync`); empty disables those endpoints (503) |
+| `X402_CHAIN_ID` | `97` | BSC chain for x402 payments (`56` = mainnet demo override) |
+| `X402_FACILITATOR_KEY` | empty | facilitator EOA key (gas only); empty disables payments (503); never committed |
+| `X402_RPC_URL` | per chain | optional BSC RPC override; per-chain public node otherwise |
+| `X402_DEFAULT_PRICE_USD` | `1.00` | flat hire price, shown on the Hire CTA |
+| `X402_U_TOKEN_ADDRESS_56` / `X402_U_TOKEN_ADDRESS_97` | pinned $U addresses | United Stables per chain (D2, from `@altananetwork/x402-server`) |
+| `X402_PERMIT2_ADDRESS` | Permit2 | reserved for future rails (unused in v1) |
 | `POSTGRES_USER` | `bnb` | docker-compose `db` user |
 | `POSTGRES_PASSWORD` | `change-me` | docker-compose `db` password |
 | `POSTGRES_DB` | `bnb_agent` | docker-compose `db` database name |
