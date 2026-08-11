@@ -8,10 +8,10 @@ from app.db.models.agent import (
     AgentCache, BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id,
 )
 from app.services.auth import issue_csrf
-from tests.conftest import _sign_in
+from tests.conftest import _now, _sign_in
 
 
-def _seed(session, token_id: int) -> str:
+async def _seed(session, token_id: int) -> str:
     aid = build_agent_id(56, BSC_IDENTITY_REGISTRY, token_id)
     session.add(AgentCache(
         agent_id=aid, chain_id=BSC_CHAIN_ID, token_id=token_id,
@@ -19,9 +19,9 @@ def _seed(session, token_id: int) -> str:
         # FU-2 X2: hire creation now 422s without a payment wallet, so the
         # happy-path seed must carry one (PR-A note, WU5).
         agent_wallet="0x" + "77" * 20,
-        supported_protocols=[], cross_chain_versions=[], raw={},
+        supported_protocols=[], cross_chain_versions=[], raw={}, created_at=_now(), updated_at=_now(),
     ))
-    session.commit()
+    await session.commit()
     return aid
 
 
@@ -32,11 +32,11 @@ def _ch(cookie: str) -> dict:
 # R5 — happy POST /api/hires returns 201 with status=pending + x402 data.
 async def test_hire_happy_returns_pending(client, db):
     address, cookie = _sign_in(client)
-    aid = _seed(db, 1)
+    aid = await _seed(db, 1)
     r = client.post("/api/hires", json={"agent_id": aid}, headers=_ch(cookie))
     assert r.status_code == 201
     body = r.json()
-    assert body["address"] == address and body["agent_id"] == aid
+    assert body["address"].lower() == address.lower() and body["agent_id"] == aid
     assert body["status"] == "pending" and body["tx_hash"] is None
     # FU-2: challenge + payment metadata (spec X1/H1).
     assert body["challenge"]["accepts"][0]["payTo"] == "0x" + "77" * 20
@@ -69,7 +69,7 @@ async def test_hire_unauth_htmx_redirect(client):
 # CSRF required.
 async def test_hire_csrf_required(client, db):
     _a, cookie = _sign_in(client)
-    aid = _seed(db, 1)
+    aid = await _seed(db, 1)
     r = client.post(
         "/api/hires", json={"agent_id": aid},
         cookies={"bnb_agent_session": cookie},

@@ -51,7 +51,10 @@ async def test_404_returns_none(respx_mock):
 
 # R7 — iter_agents(chain_id=56) skips non-BSC rows.
 async def test_iter_agents_filters_chain_mismatch(respx_mock):
-    respx_mock.get(f"{BASE}/agents").respond(200, json=[
+    respx_mock.get(
+        f"{BASE}/agents",
+        params={"chain_id": 56, "page": 1, "page_size": 200},
+    ).respond(200, json=[
         {"agent_id": "56:0x8004...:42", "chain_id": 56, "token_id": 42,
          "registry": "0x8004...", "name": "BSC", "x402_supported": False,
          "supported_protocols": []},
@@ -59,7 +62,10 @@ async def test_iter_agents_filters_chain_mismatch(respx_mock):
          "registry": "0xOther", "name": "ETH", "x402_supported": False,
          "supported_protocols": []},
     ])
-    respx_mock.get(f"{BASE}/agents", params={"chain_id": "56", "page": "2", "page_size": "200"}).respond(200, json=[])
+    respx_mock.get(
+        f"{BASE}/agents",
+        params={"chain_id": 56, "page": 2, "page_size": 200},
+    ).respond(200, json=[])
     async with Client8004Scan() as client:
         out = [a async for a in client.iter_agents(chain_id=56)]
     assert len(out) == 1 and out[0].chain_id == 56 and out[0].name == "BSC"

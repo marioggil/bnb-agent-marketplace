@@ -18,7 +18,10 @@ BASE = "https://8004scan.io/api/v1/public"
 
 # R1 — chain filter via iter_agents.
 async def test_iter_agents_filters_chain_mismatch(respx_mock):
-    respx_mock.get(f"{BASE}/agents").respond(200, json=[
+    respx_mock.get(
+        f"{BASE}/agents",
+        params={"chain_id": 56, "page": 1, "page_size": 200},
+    ).respond(200, json=[
         {"agent_id": "56:0x8004...:1", "chain_id": 56, "token_id": 1,
          "registry": "0x8004...", "name": "BSC1", "x402_supported": False,
          "supported_protocols": []},
@@ -29,7 +32,10 @@ async def test_iter_agents_filters_chain_mismatch(respx_mock):
          "registry": "0x8004...", "name": "BSC3", "x402_supported": False,
          "supported_protocols": []},
     ])
-    respx_mock.get(f"{BASE}/agents", params={"chain_id": "56", "page": "2", "page_size": "200"}).respond(200, json=[])
+    respx_mock.get(
+        f"{BASE}/agents",
+        params={"chain_id": 56, "page": 2, "page_size": 200},
+    ).respond(200, json=[])
     async with Client8004Scan() as client:
         out = [a.name async for a in client.iter_agents(chain_id=56)]
     assert out == ["BSC1", "BSC3"]

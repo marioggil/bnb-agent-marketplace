@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.config import get_settings
+from app.config import _settings_cache
 from app.db.models.sync_state import SyncState
 from app.routers import sync as sync_router
 
@@ -47,7 +47,7 @@ def test_status_requires_key(sync_key, client):
 
 def test_unconfigured_key_returns_503(client, monkeypatch):
     monkeypatch.delenv("SYNC_API_KEY", raising=False)
-    get_settings.cache_clear()
+    _settings_cache.cache_clear()
     response = client.post("/api/sync", json={"mode": "incremental"})
     assert response.status_code == 503
 

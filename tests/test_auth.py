@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from sqlalchemy import update
 
 from app.db.models.agent import (
@@ -14,21 +15,24 @@ from app.db.models.agent import (
 from app.db.models.auth_nonce import AuthNonce
 from app.db.models.user import User
 from app.services.auth import issue_csrf
-from tests.conftest import _new_address_and_key, _sign_in, _sign_message
+from tests.conftest import _now, _new_address_and_key, _sign_in, _sign_message
 
 
-def _seed_agent(session, token_id: int = 1) -> str:
+async def _seed_agent(session, token_id: int = 1) -> str:
     aid = build_agent_id(56, BSC_IDENTITY_REGISTRY, token_id)
     session.add(AgentCache(
         agent_id=aid, chain_id=BSC_CHAIN_ID, token_id=token_id,
         registry_address=BSC_IDENTITY_REGISTRY, name=f"A{token_id}",
-        supported_protocols=[], cross_chain_versions=[], raw={},
+        supported_protocols=[], cross_chain_versions=[], raw={}, created_at=_now(), updated_at=_now(),
     ))
-    session.commit()
+    await session.commit()
     return aid
 
 
 # R1 — happy verify sets cookie + persists user.
+# Interleaves TestClient writes with async `db` reads; sqlite cannot
+# coordinate the two connections, so it needs real Postgres.
+@pytest.mark.postgres
 async def test_verify_happy(client, db):
     address, pk = _new_address_and_key()
     nonce = client.get(f"/auth/nonce?address={address}").json()["nonce"]
@@ -38,6 +42,9 @@ async def test_verify_happy(client, db):
     assert r.status_code == 200
     assert "bnb_agent_session" in r.cookies
     assert r.json()["address"].lower() == address.lower()
+    # Verify persistence with a fresh session: the TestClient thread writes
+    # on its own connection, so re-query from a new one.
+    await db.rollback()
     assert await db.get(User, address) is not None
 
 
@@ -64,6 +71,9 @@ async def test_nonce_reuse_rejected(client):
 
 
 # R3 — nonce TTL: expired row rejected.
+# Seeds via async `db` then asserts via TestClient; sqlite cannot coordinate
+# the two connections, so it needs real Postgres.
+@pytest.mark.postgres
 async def test_expired_nonce_rejected(client, db):
     address, pk = _new_address_and_key()
     nonce = client.get(f"/auth/nonce?address={address}").json()["nonce"]
@@ -112,7 +122,7 @@ async def test_logout_clears_cookie(client):
 # R6 — CSRF header required on state-changing writes.
 async def test_csrf_required_on_favorite_post(client, db):
     _a, cookie = _sign_in(client)
-    aid = _seed_agent(db, 1)
+    aid = await _seed_agent(db, 1)
     no_csrf = client.post(
         "/api/favorites", json={"agent_id": aid},
         cookies={"bnb_agent_session": cookie},

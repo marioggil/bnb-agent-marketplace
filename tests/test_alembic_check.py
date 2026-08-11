@@ -29,9 +29,11 @@ def test_migration_ddl_fragments():
     src = MIGRATION.read_text(encoding="utf-8")
     # pg_trgm extension for the GIN trigram index on agent_cache.name.
     assert "pg_trgm" in src and "CREATE EXTENSION" in src
-    # GENERATED `category` materialises x402 → rebalancing.
-    assert "GENERATED ALWAYS AS" in src
-    assert "jsonb_array_elements_text" in src
+    # GENERATED `category` materialises x402 → rebalancing. The migration
+    # uses SQLAlchemy `sa.Computed(...)` (emits GENERATED ALWAYS AS at
+    # runtime), so assert on the Computed marker + the CASE expression.
+    assert "Computed" in src
+    assert "supported_protocols ? 'oasf'" in src
     assert "rebalancing" in src and "x402_supported" in src
     # hired_status enum + values.
     assert "hired_status" in src
@@ -74,11 +76,13 @@ def test_migration_0004_up_ddl_fragments():
 
 
 def test_migration_0004_down_mirrors_up():
+    import re
+
     src = MIGRATION_0004.read_text(encoding="utf-8")
     up, down = src.split("def downgrade")
     assert "drop_index" in down and "ix_hired_agents_address_status" in down
-    # every add_column in upgrade has a matching drop_column in downgrade;
-    # the column name is the 2nd quoted string on each op line.
-    added = {line.split('"')[3] for line in up.splitlines() if "add_column" in line}
-    dropped = {line.split('"')[3] for line in down.splitlines() if "drop_column" in line}
+    # every add_column in upgrade has a matching drop_column in downgrade.
+    # Column names are the 2nd quoted string inside sa.Column(...).
+    added = set(re.findall(r'add_column\([^,]+,\s*sa\.Column\("([^"]+)"', up))
+    dropped = set(re.findall(r'drop_column\([^,]+,\s*"([^"]+)"', down))
     assert added == dropped == {"amount", "token", "rail", "pay_to", "challenge_expiry"}

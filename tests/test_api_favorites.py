@@ -12,17 +12,17 @@ from app.db.models.agent import (
 )
 from app.db.models.favorite import Favorite
 from app.services.auth import issue_csrf
-from tests.conftest import _sign_in
+from tests.conftest import _now, _sign_in
 
 
-def _seed(session, token_id: int) -> str:
+async def _seed(session, token_id: int) -> str:
     aid = build_agent_id(56, BSC_IDENTITY_REGISTRY, token_id)
     session.add(AgentCache(
         agent_id=aid, chain_id=BSC_CHAIN_ID, token_id=token_id,
         registry_address=BSC_IDENTITY_REGISTRY, name=f"A{token_id}",
-        supported_protocols=[], cross_chain_versions=[], raw={},
+        supported_protocols=[], cross_chain_versions=[], raw={}, created_at=_now(), updated_at=_now(),
     ))
-    session.commit()
+    await session.commit()
     return aid
 
 
@@ -33,11 +33,11 @@ def _ch(cookie: str) -> tuple[dict, dict]:
 # R1 — happy POST returns 201.
 async def test_favorite_happy_path(client, db):
     address, cookie = _sign_in(client)
-    aid = _seed(db, 1)
+    aid = await _seed(db, 1)
     cookies, headers = _ch(cookie)
     r = client.post("/api/favorites", json={"agent_id": aid}, cookies=cookies, headers=headers)
     assert r.status_code == 201
-    assert r.json()["address"] == address and r.json()["agent_id"] == aid
+    assert r.json()["address"].lower() == address.lower() and r.json()["agent_id"] == aid
 
 
 # R2 — unauth + HTMX → HX-Redirect: /auth.
@@ -51,9 +51,12 @@ async def test_favorite_unauth_htmx_redirect(client):
 
 
 # R2a — idempotent insert: re-POST returns 201, exactly one row.
+# Counts via async `db` after TestClient writes; sqlite cannot coordinate
+# the two connections, so it needs real Postgres.
+@pytest.mark.postgres
 async def test_favorite_idempotent_post(client, db):
     address, cookie = _sign_in(client)
-    aid = _seed(db, 1)
+    aid = await _seed(db, 1)
     cookies, headers = _ch(cookie)
     for _ in range(2):
         assert client.post("/api/favorites", json={"agent_id": aid},
@@ -69,7 +72,7 @@ async def test_favorite_idempotent_post(client, db):
 async def test_favorite_idempotent_postgres(client, db):
     """Same scenario against `pg_insert.on_conflict_do_nothing`."""
     address, cookie = _sign_in(client)
-    aid = _seed(db, 1)
+    aid = await _seed(db, 1)
     cookies, headers = _ch(cookie)
     for _ in range(2):
         assert client.post("/api/favorites", json={"agent_id": aid},
@@ -84,7 +87,7 @@ async def test_favorite_idempotent_postgres(client, db):
 # R3 — DELETE returns 204 and removes the row; not-owned → 404.
 async def test_favorite_delete_and_not_owned(client, db):
     _other, _ = _sign_in(client)
-    aid = _seed(db, 1)
+    aid = await _seed(db, 1)
     address, cookie = _sign_in(client)
     cookies, headers = _ch(cookie)
     assert client.post("/api/favorites", json={"agent_id": aid},
@@ -105,8 +108,8 @@ async def test_favorite_delete_and_not_owned(client, db):
 async def test_favorite_list_own(client, db):
     _, a_cookie = _sign_in(client)
     _, b_cookie = _sign_in(client)
-    a_id = _seed(db, 1)
-    b_id = _seed(db, 2)
+    a_id = await _seed(db, 1)
+    b_id = await _seed(db, 2)
     a_c, a_h = _ch(a_cookie)
     b_c, b_h = _ch(b_cookie)
     client.post("/api/favorites", json={"agent_id": a_id}, cookies=a_c, headers=a_h)

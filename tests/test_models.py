@@ -9,6 +9,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from tests.conftest import _now
+
 from app.db.models.agent import (
     AgentCache, BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id,
 )
@@ -21,7 +23,9 @@ async def _insert(session, token_id: int, **overrides) -> AgentCache:
         agent_id=build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id),
         chain_id=BSC_CHAIN_ID, token_id=token_id,
         registry_address=BSC_IDENTITY_REGISTRY,
-        supported_protocols=[], cross_chain_versions=[], raw={}, **overrides,
+        supported_protocols=[], cross_chain_versions=[],
+        created_at=_now(), updated_at=_now(),
+        **overrides,
     )
     session.add(row)
     await session.commit()
@@ -35,7 +39,7 @@ async def test_unique_agent_id_rejects_duplicate(db):
     dup = AgentCache(
         agent_id=build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, 1),
         chain_id=BSC_CHAIN_ID, token_id=99, registry_address="0xOther",
-        name="dup", supported_protocols=[], cross_chain_versions=[], raw={},
+        name="dup", supported_protocols=[], cross_chain_versions=[], raw={}, created_at=_now(), updated_at=_now(),
     )
     db.add(dup)
     with pytest.raises(IntegrityError):
@@ -48,7 +52,7 @@ async def test_unique_composite_chain_token(db):
     dup = AgentCache(
         agent_id="56:0xOtherRegistry:1", chain_id=BSC_CHAIN_ID, token_id=1,
         registry_address="0xOtherRegistry", name="dup",
-        supported_protocols=[], cross_chain_versions=[], raw={},
+        supported_protocols=[], cross_chain_versions=[], raw={}, created_at=_now(), updated_at=_now(),
     )
     db.add(dup)
     with pytest.raises(IntegrityError):

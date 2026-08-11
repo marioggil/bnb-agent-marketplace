@@ -14,19 +14,19 @@ from app.db.models.agent import (
 )
 from app.db.models.hired_agent import HiredAgent, HiredStatus
 from app.services.auth import issue_csrf
-from tests.conftest import _sign_in_with_key
+from tests.conftest import _now, _sign_in_with_key
 
 _PAY_TO = "0x" + "77" * 20
 
 
-def _seed_agent(session, token_id: int = 1, wallet: str = _PAY_TO) -> str:
+async def _seed_agent(session, token_id: int = 1, wallet: str = _PAY_TO) -> str:
     aid = build_agent_id(56, BSC_IDENTITY_REGISTRY, token_id)
     session.add(AgentCache(
         agent_id=aid, chain_id=BSC_CHAIN_ID, token_id=token_id,
         registry_address=BSC_IDENTITY_REGISTRY, name=f"A{token_id}",
-        agent_wallet=wallet, supported_protocols=[], cross_chain_versions=[], raw={},
+        agent_wallet=wallet, supported_protocols=[], cross_chain_versions=[], raw={}, created_at=_now(), updated_at=_now(),
     ))
-    session.commit()
+    await session.commit()
     return aid
 
 
@@ -47,7 +47,7 @@ def _create_hire(client, cookie: str, aid: str) -> dict:
 # H1 — happy pay: 200 + status paid + tx_hash, one broadcast.
 async def test_pay_happy_path(client, db, fake_broadcaster, signed_envelope):
     account, _address, cookie = _sign_in_with_key(client)
-    aid = _seed_agent(db, 1)
+    aid = await _seed_agent(db, 1)
     hire = _create_hire(client, cookie, aid)
     assert hire["pay_to"] == _PAY_TO and hire["challenge"] is not None
 
@@ -65,7 +65,7 @@ async def test_pay_happy_path(client, db, fake_broadcaster, signed_envelope):
 # X3 — PAYMENT-SIGNATURE dialect header also accepted.
 async def test_pay_via_payment_signature_header(client, db, fake_broadcaster, signed_envelope):
     account, _address, cookie = _sign_in_with_key(client)
-    aid = _seed_agent(db, 2)
+    aid = await _seed_agent(db, 2)
     hire = _create_hire(client, cookie, aid)
     pay = client.post(
         f"/api/hires/{hire['id']}/pay",
@@ -79,7 +79,7 @@ async def test_pay_via_payment_signature_header(client, db, fake_broadcaster, si
 # H4/X6 — double-pay: 409 already_paid, no second broadcast.
 async def test_pay_double_pay_409(client, db, fake_broadcaster, signed_envelope):
     account, _address, cookie = _sign_in_with_key(client)
-    aid = _seed_agent(db, 3)
+    aid = await _seed_agent(db, 3)
     hire = _create_hire(client, cookie, aid)
     envelope = signed_envelope(account, hire["challenge"])
     first = client.post(
@@ -99,7 +99,7 @@ async def test_pay_double_pay_409(client, db, fake_broadcaster, signed_envelope)
 # X7 — expired challenge: 409 before decode/broadcast.
 async def test_pay_expired_challenge_409(client, db, fake_broadcaster, signed_envelope):
     account, _address, cookie = _sign_in_with_key(client)
-    aid = _seed_agent(db, 4)
+    aid = await _seed_agent(db, 4)
     hire = _create_hire(client, cookie, aid)
     row = await db.get(HiredAgent, hire["id"])
     row.challenge_expiry = datetime.now(tz=timezone.utc) - timedelta(seconds=60)
@@ -117,7 +117,7 @@ async def test_pay_expired_challenge_409(client, db, fake_broadcaster, signed_en
 # X2 — agent without wallet: 422 no_pay_to, no challenge issued.
 async def test_create_hire_no_wallet_422(client, db):
     _account, _address, cookie = _sign_in_with_key(client)
-    aid = _seed_agent(db, 5, wallet=None)
+    aid = await _seed_agent(db, 5, wallet=None)
     r = client.post("/api/hires", json={"agent_id": aid}, cookies=_ck(cookie), headers=_ch(cookie))
     assert r.status_code == 422
     assert r.json()["error"]["code"] == "no_pay_to"
@@ -132,7 +132,7 @@ async def test_pay_unauth_401(client):
 # H4 — missing CSRF → 403.
 async def test_pay_missing_csrf_403(client, db):
     _account, _address, cookie = _sign_in_with_key(client)
-    aid = _seed_agent(db, 6)
+    aid = await _seed_agent(db, 6)
     hire = _create_hire(client, cookie, aid)
     r = client.post(
         f"/api/hires/{hire['id']}/pay",
@@ -147,11 +147,11 @@ async def test_pay_gateway_unconfigured_503(
     client, db, monkeypatch, fake_broadcaster, signed_envelope
 ):
     monkeypatch.setenv("X402_FACILITATOR_KEY", "")
-    from app.config import get_settings
+    from app.config import _settings_cache
 
-    get_settings.cache_clear()
+    _settings_cache.cache_clear()
     account, _address, cookie = _sign_in_with_key(client)
-    aid = _seed_agent(db, 7)
+    aid = await _seed_agent(db, 7)
     hire = _create_hire(client, cookie, aid)
     pay = client.post(
         f"/api/hires/{hire['id']}/pay",
@@ -166,7 +166,7 @@ async def test_pay_gateway_unconfigured_503(
 # H3 — lazy TTL sweep: creating a hire cancels the user's expired pendings.
 async def test_ttl_sweep_cancels_expired_pending(client, db):
     _account, _address, cookie = _sign_in_with_key(client)
-    aid = _seed_agent(db, 8)
+    aid = await _seed_agent(db, 8)
     first = _create_hire(client, cookie, aid)
     row = await db.get(HiredAgent, first["id"])
     row.challenge_expiry = datetime.now(tz=timezone.utc) - timedelta(seconds=60)
@@ -185,7 +185,7 @@ async def test_ttl_sweep_cancels_expired_pending(client, db):
 # H2 — status endpoint exposes payment fields after the pay.
 async def test_get_hire_status_after_pay(client, db, fake_broadcaster, signed_envelope):
     account, _address, cookie = _sign_in_with_key(client)
-    aid = _seed_agent(db, 9)
+    aid = await _seed_agent(db, 9)
     hire = _create_hire(client, cookie, aid)
     client.post(
         f"/api/hires/{hire['id']}/pay",

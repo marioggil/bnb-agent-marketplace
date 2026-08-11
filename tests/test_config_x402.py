@@ -14,12 +14,13 @@ from app.config import (
     X402_U_TOKEN_ADDRESS_MAINNET,
     X402_U_TOKEN_ADDRESS_TESTNET,
     Settings,
+    _settings_cache,
     get_settings,
 )
 
 
 def _fresh() -> Settings:
-    get_settings.cache_clear()
+    _settings_cache.cache_clear()
     return Settings()
 
 

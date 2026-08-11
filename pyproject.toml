@@ -74,6 +74,10 @@ packages = ["app"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# pytest-asyncio 1.x defaults to a per-test loop; session-scoped fixtures
+# (the in-memory sqlite schema) would run on a different loop/thread and
+# the test DB would be empty. Force everything onto one session loop.
+asyncio_default_fixture_loop_scope = "session"
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 # Custom marker so `@pytest.mark.postgres` does not trip `--strict-markers`.
@@ -86,6 +90,15 @@ filterwarnings = [
     "error",
     # httpx deprecation noise from third-party test deps; revisit per release.
     "ignore::DeprecationWarning:httpx.*",
+    # starlette 1.x deprecates httpx-backed TestClient in favor of httpx2.
+    # The project uses httpx deliberately (8004scan client + respx mocks),
+    # so the deprecation warning is noise here; revisit if httpx2 becomes
+    # the standard TestClient backend.
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+    # httpx 0.28 deprecates per-request cookies= on the client; tests set
+    # them for convenience (the message-level filter is needed because the
+    # warning's reported module is the caller, not httpx).
+    "ignore:Setting per-request cookies=.*:DeprecationWarning",
 ]
 
 # ---------------------------------------------------------------------------
