@@ -17,6 +17,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 
+from app.config import get_settings
 from app.db.models.agent import AgentCache
 from app.db.models.favorite import Favorite
 from app.db.models.user import User
@@ -177,7 +178,11 @@ async def home(
 async def agent_detail(
     request: Request, chain_id: int, token_id: int
 ) -> HTMLResponse:
-    """Single-agent detail page (spec #22)."""
+    """Single-agent detail page (spec #22 + web-pages-x402 W1).
+
+    FU-2: the hire CTA needs the agent's `pay_to` (payment wallet) and the
+    flat price (X402_DEFAULT_PRICE_USD). `csrf_token()` is already a global.
+    """
     async with AsyncSessionLocal() as session:
         from sqlalchemy import select
 
@@ -188,7 +193,15 @@ async def agent_detail(
         )
     if row is None:
         raise NotFound(f"agent {chain_id}:{token_id} not cached")
-    return _render(request, "pages/agent_detail.html", {"agent": row})
+    return _render(
+        request,
+        "pages/agent_detail.html",
+        {
+            "agent": row,
+            "pay_to": row.agent_wallet,
+            "hire_price_usd": get_settings().x402_default_price_usd,
+        },
+    )
 
 
 @router.get("/favorites", response_class=HTMLResponse)

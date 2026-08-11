@@ -16,11 +16,37 @@
     <dt>Score</dt><dd>{{ agent.average_score or 'n/a' }} ({{ agent.total_feedbacks }} feedbacks)</dd>
     <dt>Protocols</dt><dd>{{ agent.supported_protocols | join(', ') }}</dd>
   </dl>
-  <form method="post" action="/api/hires" hx-post="/api/hires"
-        hx-headers='{"X-CSRF-Token": "{{ csrf_token() if csrf_token is defined else '' }}"}'
-        hx-swap="none">
-    <input type="hidden" name="agent_id" value="{{ agent.agent_id }}" />
-    <button type="submit">Hire (status=pending)</button>
-  </form>
+
+  <!-- x402 hire panel (FU-2, spec web-pages-x402 W1/W3/W4). The CTA is priced
+       at X402_DEFAULT_PRICE_USD ($1.00) and disabled when the agent has no
+       payment wallet (payTo); the status UI is driven by payment.js. -->
+  <section class="hire-panel">
+    <h2>Hire this agent</h2>
+    <p class="hire-price">Price: ${{ '%.2f'|format(hire_price_usd) }} USD, paid in $U (x402)</p>
+    {% if pay_to %}
+    <button id="hire-cta" type="button" class="btn"
+            data-agent-id="{{ agent.agent_id }}"
+            data-agent-url="{{ agent.agent_url or '' }}"
+            data-csrf="{{ csrf_token() if csrf_token is defined else '' }}">
+      Hire for ${{ '%.2f'|format(hire_price_usd) }}
+    </button>
+    {% else %}
+    <button id="hire-cta" type="button" class="btn" disabled
+            data-agent-id="{{ agent.agent_id }}"
+            data-csrf="{{ csrf_token() if csrf_token is defined else '' }}">
+      Hire for ${{ '%.2f'|format(hire_price_usd) }}
+    </button>
+    <p class="hint">This agent cannot be hired — no payment wallet (payTo) is registered.</p>
+    {% endif %}
+    <div id="hire-status" data-state="idle" role="status" aria-live="polite">
+      <span class="status-idle">Not started.</span>
+      <span class="status-pending">Pending — awaiting your wallet signature&hellip;</span>
+      <span class="status-paid">Paid — redirecting&hellip;</span>
+      <span class="status-failed">Payment failed: <span id="hire-error"></span></span>
+    </div>
+  </section>
 </article>
+<!-- Vendored ethers v6 UMD + the x402 signer (no CDN inside the container). -->
+<script src="/static/js/ethers-6.14.min.js" defer></script>
+<script src="/static/js/payment.js" defer></script>
 {% endblock %}
