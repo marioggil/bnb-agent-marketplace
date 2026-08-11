@@ -1,0 +1,20 @@
+{
+  "x402Version": 2,
+  "error": "payment required",
+  "resource": { "url": "https://marketplace.example/api/hires/1" },
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "eip155:97",
+      "asset": "0xc70B8741B8B07A6d61E54fd4B20f22Fa648E5565",
+      "payTo": "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
+      "amount": "1000000000000000000",
+      "maxTimeoutSeconds": 300,
+      "extra": {
+        "name": "United Stables",
+        "version": "1",
+        "assetTransferMethod": "eip3009"
+      }
+    }
+  ]
+}

@@ -16,6 +16,9 @@ def _seed(session, token_id: int) -> str:
     session.add(AgentCache(
         agent_id=aid, chain_id=BSC_CHAIN_ID, token_id=token_id,
         registry_address=BSC_IDENTITY_REGISTRY, name=f"A{token_id}",
+        # FU-2 X2: hire creation now 422s without a payment wallet, so the
+        # happy-path seed must carry one (PR-A note, WU5).
+        agent_wallet="0x" + "77" * 20,
         supported_protocols=[], cross_chain_versions=[], raw={},
     ))
     session.commit()
@@ -26,7 +29,7 @@ def _ch(cookie: str) -> dict:
     return {"bnb_agent_session": cookie, "X-CSRF-Token": issue_csrf(cookie)}
 
 
-# R5 — happy POST /api/hires returns 201 with status=pending.
+# R5 — happy POST /api/hires returns 201 with status=pending + x402 data.
 async def test_hire_happy_returns_pending(client, db):
     address, cookie = _sign_in(client)
     aid = _seed(db, 1)
@@ -35,6 +38,10 @@ async def test_hire_happy_returns_pending(client, db):
     body = r.json()
     assert body["address"] == address and body["agent_id"] == aid
     assert body["status"] == "pending" and body["tx_hash"] is None
+    # FU-2: challenge + payment metadata (spec X1/H1).
+    assert body["challenge"]["accepts"][0]["payTo"] == "0x" + "77" * 20
+    assert body["pay_to"] == "0x" + "77" * 20
+    assert body["rail"] == "eip3009" and float(body["amount"]) == 1.0
 
 
 # R6 — unknown agent → 404.
