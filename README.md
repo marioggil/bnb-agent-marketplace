@@ -215,6 +215,22 @@ dispatched. A second `POST` while a run is in flight gets `409`.
 
 ---
 
+## Agent payment history
+
+`GET /api/agents/{chain_id}/{token_id}/payments` returns the agent's incoming
+$U transfers (public onchain data, no auth) — newest first, last ~50000 blocks
+by default, capped at `limit` (default 50, max 200). Requires the agent to be
+cached locally; an agent without a payment wallet answers `payments: []`.
+
+```bash
+curl "https://your-app.example/api/agents/97/42/payments?limit=10"
+# -> {"agent_id":"97:0x8004...:42","chain_id":97,"token_id":42,"wallet":"0x...",
+#     "token":"0xc70B...","payments":[{"tx_hash":"0x...","from":"0x...",
+#     "to":"0x...","value_wei":"1000000","block_number":3141592}]}
+```
+
+---
+
 ## Wallet auth (curl preview)
 
 The full auth flow ships in **PR-C** (EIP-191 `personal_sign`, single-use
