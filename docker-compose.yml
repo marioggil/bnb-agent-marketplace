@@ -99,6 +99,8 @@ volumes:
     # Each attempt to apply the 0001_initial migration against a fresh
     # volume surfaced a different issue (v1: stale password from the
     # panel era; v2: GENERATED column with subquery rejected by
-    # Postgres). v3 follows the v2 fix to a working app + migration.
-    # Bump this every time we need initdb to run again from scratch.
-    name: bnb-agent-pgdata-v3
+    # Postgres). v3 was the working app + migration. Bumped to v4 on
+    # 2026-08-25 to rotate POSTGRES_PASSWORD (initdb must re-run with the
+    # new credentials). Bump this every time we need initdb to run again
+    # from scratch.
+    name: bnb-agent-pgdata-v4
