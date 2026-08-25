@@ -101,6 +101,8 @@ volumes:
     # panel era; v2: GENERATED column with subquery rejected by
     # Postgres). v3 was the working app + migration. Bumped to v4 on
     # 2026-08-25 to rotate POSTGRES_PASSWORD (initdb must re-run with the
-    # new credentials). Bump this every time we need initdb to run again
-    # from scratch.
-    name: bnb-agent-pgdata-v4
+    # new credentials). v4 was then initdb'd with the stale password
+    # (created before the panel update landed), so bumped to v5 to align
+    # with the rotated password in the panel. Bump this every time we need
+    # initdb to run again from scratch.
+    name: bnb-agent-pgdata-v5
