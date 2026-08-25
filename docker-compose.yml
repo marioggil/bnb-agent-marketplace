@@ -3,14 +3,16 @@ name: bnb-agent-marketplace
 # ---------------------------------------------------------------------------
 # Stack for bnb-agent-marketplace (Dokploy + local dev).
 #
-# Env var strategy:
-#   Dokploy's compose parser does NOT support `${VAR}` interpolation in
-#   the environment block. We therefore:
-#   * Inline safe defaults as literal strings (e.g. 8004SCAN_BASE).
-#   * Leave the per-deploy secrets and connection strings OUT of this
-#     file entirely. They are set in the Dokploy panel (or in a host
-#     .env passed via `docker compose --env-file .env`) and injected
-#     directly into the container as environment variables.
+# Env var strategy (Dokploy):
+#   Dokploy writes the panel Environment tab to a `.env` file next to this
+#   compose file and does NOT inject those vars into containers automatically
+#   (docs.dokploy.com/docs/core/docker-compose -> Environment). We therefore
+#   load that file explicitly with `env_file: [".env"]` on every service.
+#
+#   Secrets (POSTGRES_USER/PASSWORD/DB, DATABASE_URL, SECRET_KEY,
+#   SYNC_API_KEY, X402_FACILITATOR_KEY) are set ONLY in the Dokploy panel and
+#   are NEVER committed here. Keep only non-secret defaults in the
+#   `environment:` block — a key present there wins over the panel value.
 #
 # Required env vars to set in the Dokploy panel (case-sensitive names):
 #   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
@@ -21,7 +23,7 @@ name: bnb-agent-marketplace
 #                   values; see app/config.py)
 #   8004SCAN_API_KEY (optional, leave unset for the free ~50 rpm tier)
 #
-# Optional env vars with sane defaults below (override in the panel):
+# Optional env vars (override in the panel):
 #   SESSION_TTL_MIN, LOG_LEVEL, WORKER_RATE_PER_SEC
 # ---------------------------------------------------------------------------
 
@@ -30,20 +32,15 @@ services:
     image: postgres:16-alpine
     container_name: bnb-agent-db
     restart: unless-stopped
-    # Inline env vars for the Postgres image. Dokploy v0.29.14 with a
-    # GitHub provider does NOT inject panel env-vars into the runtime
-    # container for compose services (verified 2026-08-08: panel values
-    # were saved but the Converted Compose showed an empty `environment:`
-    # block, and the app container's preflight crashed with
-    # `FATAL: DATABASE_URL is not set` every restart). The literals below
-    # are required to make the stack bootable. Rotate after deploy.
-    environment:
-      POSTGRES_USER: bnb
-      POSTGRES_PASSWORD: CVc9et1hDP3PYwRILMFiZkXE
-      POSTGRES_DB: bnb_agent
-    # Note: when changing POSTGRES_PASSWORD you must `docker volume rm
-    # bnb-agent-pgdata` once so initdb re-runs with the new credentials.
-    # The `db` container will not accept a password change otherwise.
+    # Postgres credentials come from the Dokploy panel via `env_file: .env`
+    # (Dokploy writes the panel to `.env` next to this file; it is NOT
+    # injected automatically — see header). Keys: POSTGRES_USER,
+    # POSTGRES_PASSWORD, POSTGRES_DB.
+    env_file:
+      - .env
+    # Note: when changing POSTGRES_PASSWORD you must bump the `pgdata`
+    # volume name (below) so initdb re-runs with the new credentials. The
+    # `db` container will not accept a password change otherwise.
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -64,35 +61,21 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # Secrets (DATABASE_URL, SECRET_KEY, SYNC_API_KEY, X402_FACILITATOR_KEY,
+    # POSTGRES_*) come from the Dokploy panel via `env_file: .env`. The panel
+    # writes them to `.env` next to this compose file; we load that file into
+    # the container because Dokploy does NOT inject panel env vars
+    # automatically. Never commit secrets here.
+    env_file:
+      - .env
     environment:
-      # 8004scan base URL is safe to inline. The API key is optional and
-      # is set in the Dokploy panel (or left unset for the free tier).
+      # Non-secret defaults (literal values). A key set here WINS over the
+      # panel value for the same key — remove a key from this block if you
+      # want the panel to control it.
       8004SCAN_BASE: https://8004scan.io/api/v1/public
-
-      # Operational defaults — literal values, override in the panel.
       SESSION_TTL_MIN: "60"
       LOG_LEVEL: INFO
       WORKER_RATE_PER_SEC: "4"
-
-      # Secrets inlined for the same reason as the `db` service above:
-      # Dokploy's panel env-vars are not reaching this container, so the
-      # preflight (DATABASE_URL / SECRET_KEY) and the Postgres auth
-      # (POSTGRES_*) must come from the compose file. Accept the repo-
-      # hygiene trade-off for the MVP alpha and rotate after deploy.
-      POSTGRES_USER: bnb
-      POSTGRES_PASSWORD: CVc9et1hDP3PYwRILMFiZkXE
-      POSTGRES_DB: bnb_agent
-      DATABASE_URL: postgresql+asyncpg://bnb:CVc9et1hDP3PYwRILMFiZkXE@db:5432/bnb_agent
-      SECRET_KEY: BWe6k5vSV47iRy4FyXvzkgwdav4apdTeaiJpTJOnqxY
-      # API key for the /api/sync endpoint (POST /api/sync + GET
-      # /api/sync/status). Inlined for the same Dokploy limitation as the
-      # other secrets: panel env-vars are not injected into the container,
-      # so this MUST live in the compose file to reach the app.
-      SYNC_API_KEY: YdjTooGdDuTffvCOMudx5ZL3eMQYjZIy0N8upFvv6hk
-      # x402 facilitator key (B402 settlement broadcaster) — testnet demo
-      # key. The facilitator only pays gas; funds never touch it (payTo is
-      # bound in the buyer's signature). Rotate before mainnet demo.
-      X402_FACILITATOR_KEY: 7b2e1d97d72a05061538eff7a1bca0fb5cc75a3e02103b73bd045af9964c7efc
       X402_CHAIN_ID: "97"
       X402_RPC_URL: https://bsc-testnet-rpc.publicnode.com
     ports:
