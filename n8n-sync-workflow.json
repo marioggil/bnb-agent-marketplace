@@ -1,0 +1,158 @@
+{
+  "name": "bnb-agent-sync-12min",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 12
+            }
+          ]
+        }
+      },
+      "id": "9f2c1a10-0001-4a7b-9c3e-000000000001",
+      "name": "Cada 12 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://proyecto-atlas-bnbmarket-sbqbwu-b70a44-194-163-177-206.sslip.io/api/sync/status",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $vars.SYNC_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9f2c1a10-0002-4a7b-9c3e-000000000002",
+      "name": "GET status sync",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.running }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9f2c1a10-0003-4a7b-9c3e-000000000003",
+      "name": "Esta corriendo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {},
+      "id": "9f2c1a10-0004-4a7b-9c3e-000000000004",
+      "name": "Ya esta corriendo (no hacer nada)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [660, -220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://proyecto-atlas-bnbmarket-sbqbwu-b70a44-194-163-177-206.sslip.io/api/sync",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $vars.SYNC_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"mode\": \"incremental\"\n}",
+        "options": {
+          "neverError": true
+        }
+      },
+      "id": "9f2c1a10-0005-4a7b-9c3e-000000000005",
+      "name": "POST disparar sync",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 220]
+    }
+  ],
+  "connections": {
+    "Cada 12 min": {
+      "main": [
+        [
+          {
+            "node": "GET status sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET status sync": {
+      "main": [
+        [
+          {
+            "node": "Esta corriendo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Esta corriendo?": {
+      "main": [
+        [
+          {
+            "node": "Ya esta corriendo (no hacer nada)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "POST disparar sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}
