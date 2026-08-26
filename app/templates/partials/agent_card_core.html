@@ -1,0 +1,48 @@
+{# One agent card — the single source of card markup (DESIGN.md anatomy).
+   Included by agent_card.html (full page) and agent_card_htmx.html (HTMX
+   swap) so both variants render the IDENTICAL card. Expects `agent`,
+   `hires` and `hire_price_usd` in context. The image helper falls back to
+   placeholder.svg when image_url is null/empty; the onerror keeps the card
+   intact when a remote image 404s (never duplicated — single definition). #}
+{% set _owner = agent.owner_username or agent.owner_ens %}
+{% if not _owner and agent.owner_address %}
+  {% set _owner = agent.owner_address[:6] ~ '…' ~ agent.owner_address[-4:] %}
+{% endif %}
+{% set _hire_count = hires.get(agent.agent_id) if hires else 0 %}
+<article class="agent-card">
+  <a class="agent-card-image" href="/agents/{{ agent.chain_id }}/{{ agent.token_id }}">
+    <img src="{{ agent.image_url | img_fallback }}" alt="{{ agent.name or agent.agent_id }}"
+         onerror="this.onerror=null;this.src='/static/img/placeholder.svg'" />
+    <span class="badge category">{{ agent.category | category_label }}</span>
+  </a>
+  <div class="agent-card-body">
+    <h3 class="agent-card-name">
+      <a href="/agents/{{ agent.chain_id }}/{{ agent.token_id }}">{{ agent.name or agent.agent_id }}</a>
+    </h3>
+    <p class="agent-card-badges">
+      {% if agent.is_verified %}<span class="badge verified" title="Verified on-chain agent">&#10003; verified</span>{% endif %}
+      {% if agent.x402_supported %}<span class="badge x402" title="Payable via x402 — pay per request">x402</span>{% endif %}
+    </p>
+    <p class="agent-card-description">{{ agent.description or 'No description.' }}</p>
+    <p class="meta">
+      {% if agent.agent_wallet %}
+        <span class="price">${{ '%.2f' | format(hire_price_usd | default(1.00)) }}</span>
+      {% endif %}
+      <span class="score">{{ agent.average_score or 'n/a' }} <span class="score-label">score</span></span>
+      {% if _hire_count %}<span>Hired by {{ _hire_count }}</span>{% endif %}
+      {% if agent.owner_address and _owner %}
+        <a class="creator" href="/?owner={{ agent.owner_address }}">by {{ _owner }}</a>
+      {% endif %}
+    </p>
+    {% if agent.total_feedbacks > 0 %}
+      <p class="ratings">&#9733; {{ agent.star_count }} &middot; {{ agent.total_feedbacks }} ratings</p>
+    {% endif %}
+    <div class="card-cta">
+      {% if agent.agent_wallet %}
+        <a class="btn btn-primary" href="/agents/{{ agent.chain_id }}/{{ agent.token_id }}">Hire</a>
+      {% else %}
+        <button class="btn" type="button" disabled>Not hireable</button>
+      {% endif %}
+    </div>
+  </div>
+</article>

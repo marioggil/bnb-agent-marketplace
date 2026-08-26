@@ -1,20 +1,35 @@
 {% extends "base.html" %}
 {% block title %}{{ agent.name or agent.agent_id }} &mdash; bnb_agent{% endblock %}
 {% block content %}
+{% set _owner = agent.owner_username or agent.owner_ens %}
+{% if not _owner and agent.owner_address %}
+  {% set _owner = agent.owner_address[:6] ~ '…' ~ agent.owner_address[-4:] %}
+{% endif %}
 <article class="agent-detail">
-  <img class="hero" src="{{ agent.image_url | img_fallback }}" alt="{{ agent.name or 'agent' }}" />
+  <img class="agent-hero" src="{{ agent.image_url | img_fallback }}" alt="{{ agent.name or 'agent' }}" />
   <h1>{{ agent.name or agent.agent_id }}</h1>
-  <p class="meta">
-    <span class="category">{{ agent.category }}</span>
-    {% if agent.x402_supported %}<span class="badge x402">x402</span>{% endif %}
-    {% if agent.is_verified %}<span class="badge verified">verified</span>{% endif %}
+  <p class="agent-detail-badges">
+    <span class="badge category">{{ agent.category | category_label }}</span>
+    {% if agent.x402_supported %}<span class="badge x402" title="Payable via x402 — pay per request">x402</span>{% endif %}
+    {% if agent.is_verified %}<span class="badge verified" title="Verified on-chain agent">&#10003; verified</span>{% endif %}
   </p>
-  <p>{{ agent.description or 'No description.' }}</p>
+  <p class="agent-detail-description">{{ agent.description or 'No description.' }}</p>
   <dl>
     <dt>Agent ID</dt><dd>{{ agent.agent_id }}</dd>
-    <dt>Owner</dt><dd>{{ agent.owner_address or 'unknown' }}</dd>
+    <dt>Owner</dt>
+    <dd>
+      {% if agent.owner_address and _owner %}
+        <a href="/?owner={{ agent.owner_address }}">{{ _owner }}</a>
+      {% else %}
+        unknown
+      {% endif %}
+    </dd>
     <dt>Score</dt><dd>{{ agent.average_score or 'n/a' }} ({{ agent.total_feedbacks }} feedbacks)</dd>
-    <dt>Protocols</dt><dd>{{ agent.supported_protocols | join(', ') }}</dd>
+    {% if agent.total_feedbacks > 0 %}
+      <dt>Rating</dt><dd>&#9733; {{ agent.star_count }} &middot; {{ agent.total_feedbacks }} ratings</dd>
+    {% endif %}
+    <dt>Hires</dt><dd>Hired by {{ hires.get(agent.agent_id) or 0 }} users</dd>
+    <dt>Protocols</dt><dd>{{ agent.supported_protocols | join(', ') or '—' }}</dd>
   </dl>
 
   <!-- x402 hire panel (FU-2, spec web-pages-x402 W1/W3/W4). The CTA is priced
@@ -22,23 +37,23 @@
        payment wallet (payTo); the status UI is driven by payment.js. -->
   <section class="hire-panel">
     <h2>Hire this agent</h2>
-    <p class="hire-price">Price: ${{ '%.2f'|format(hire_price_usd) }} USD, paid in $U (x402)</p>
+    <p class="hire-price">Hire for ${{ '%.2f'|format(hire_price_usd) }}</p>
     {% if pay_to %}
-    <button id="hire-cta" type="button" class="btn"
+    <button id="hire-cta" type="button" class="btn btn-primary"
             data-agent-id="{{ agent.agent_id }}"
             data-agent-url="{{ agent.agent_url or '' }}"
             data-csrf="{{ csrf_token() if csrf_token is defined else '' }}">
       Hire for ${{ '%.2f'|format(hire_price_usd) }}
     </button>
     {% else %}
-    <button id="hire-cta" type="button" class="btn" disabled
+    <button id="hire-cta" type="button" class="btn btn-primary" disabled
             data-agent-id="{{ agent.agent_id }}"
             data-csrf="{{ csrf_token() if csrf_token is defined else '' }}">
       Hire for ${{ '%.2f'|format(hire_price_usd) }}
     </button>
     <p class="hint">This agent cannot be hired — no payment wallet (payTo) is registered.</p>
     {% endif %}
-    <div id="hire-status" data-state="idle" role="status" aria-live="polite">
+    <div id="hire-status" class="is-idle" data-state="idle" role="status" aria-live="polite">
       <span class="status-idle">Not started.</span>
       <span class="status-pending">Pending — awaiting your wallet signature&hellip;</span>
       <span class="status-paid">Paid — redirecting&hellip;</span>

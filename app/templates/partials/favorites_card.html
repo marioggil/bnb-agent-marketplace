@@ -2,8 +2,8 @@
    The CSRF token is rendered by the page-level context (or empty when
    anonymous — the page redirects to /auth in that case). #}
 <li class="fav-card" data-agent-id="{{ fav.agent_id }}">
-  <span>{{ fav.agent_id }}</span>
-  <button hx-delete="/api/favorites/{{ fav.agent_id }}"
+  <span class="fav-name">{{ fav.agent_id }}</span>
+  <button class="btn btn-danger" hx-delete="/api/favorites/{{ fav.agent_id }}"
           hx-headers='{"X-CSRF-Token": "{{ csrf_token() if csrf_token is defined else '' }}"}'
           hx-target="closest .fav-card" hx-swap="outerHTML"
           hx-confirm="Remove from favorites?">Remove</button>

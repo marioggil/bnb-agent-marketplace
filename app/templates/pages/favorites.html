@@ -10,7 +10,10 @@
       {% endfor %}
     </ul>
   {% else %}
-    <p>No favorites yet. Browse the <a href="/">home</a> page to bookmark an agent.</p>
+    <div class="empty-state">
+      <p>No favorites yet &mdash; browse agents</p>
+      <a class="btn btn-primary" href="/">Browse agents</a>
+    </div>
   {% endif %}
 </section>
 {% endblock %}

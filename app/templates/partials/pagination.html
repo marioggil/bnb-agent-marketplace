@@ -1,22 +1,27 @@
 {# Pagination: page numbers on first paint, plus a "load more" button
-   for HTMX (spec web-pages R4, S1, S3, S4). #}
+   for HTMX (spec web-pages R4, S1, S3, S4). The `owner` filter is carried
+   through so creator links paginate correctly. The `.loading` spinner is
+   the hx-indicator: hidden until htmx-request lands on it. #}
+{% set _qs = 'q=' ~ (q or '') ~ '&category=' ~ (category or '') ~ '&x402=' ~ ('true' if x402 else '') ~ '&sort=' ~ sort ~ '&owner=' ~ (owner or '') %}
 <nav class="pagination" aria-label="pagination">
   {% if page > 1 %}
-    <a href="/?q={{ q or '' }}&category={{ category or '' }}&x402={{ 'true' if x402 else '' }}&sort={{ sort }}&page={{ page - 1 }}&page_size={{ page_size }}">Prev</a>
+    <a href="/?{{ _qs }}&page={{ page - 1 }}&page_size={{ page_size }}">Prev</a>
   {% endif %}
   {% for p in pagination_window(page, total_pages) %}
     {% if p is none %}
       <span class="ellipsis">&hellip;</span>
     {% else %}
-      <a href="/?q={{ q or '' }}&category={{ category or '' }}&x402={{ 'true' if x402 else '' }}&sort={{ sort }}&page={{ p }}&page_size={{ page_size }}"
+      <a href="/?{{ _qs }}&page={{ p }}&page_size={{ page_size }}"
          class="{% if p == page %}active{% endif %}">{{ p }}</a>
     {% endif %}
   {% endfor %}
   {% if page < total_pages %}
-    <a href="/?q={{ q or '' }}&category={{ category or '' }}&x402={{ 'true' if x402 else '' }}&sort={{ sort }}&page={{ page + 1 }}&page_size={{ page_size }}">Next</a>
+    <a href="/?{{ _qs }}&page={{ page + 1 }}&page_size={{ page_size }}">Next</a>
   {% endif %}
   {% if has_more %}
-    <button hx-get="/?q={{ q or '' }}&category={{ category or '' }}&x402={{ 'true' if x402 else '' }}&sort={{ sort }}&page={{ page + 1 }}&page_size={{ page_size }}"
-            hx-target=".grid" hx-swap="beforeend">Load more</button>
+    <button hx-get="/?{{ _qs }}&page={{ page + 1 }}&page_size={{ page_size }}"
+            hx-target=".grid" hx-swap="beforeend"
+            hx-indicator=".loading">Load more</button>
   {% endif %}
+  <span class="loading" aria-hidden="true"></span>
 </nav>

@@ -6,13 +6,14 @@ Pattern: each route returns either `pages/*.html` (full page) or
 `partials/*.html` (HTMX swap fragment) based on the `HX-Request: true`
 header. The `TemplateResponse` is reused across both paths.
 """
+
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
@@ -20,10 +21,14 @@ from jinja2 import pass_context
 from app.config import get_settings
 from app.db.models.agent import AgentCache
 from app.db.models.favorite import Favorite
-from app.db.models.user import User
 from app.db.session import AsyncSessionLocal
 from app.errors import AuthRequired, NotFound
-from app.services.auth import SESSION_COOKIE_NAME, get_current_user, issue_csrf
+from app.services.auth import (
+    SESSION_COOKIE_NAME,
+    _read_session,
+    get_current_user,
+    issue_csrf,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +73,26 @@ templates.env.filters["img_fallback"] = _img_fallback
 templates.env.globals["pagination_window"] = _pagination_window
 
 
+#: Display names for the filter/card category values (DESIGN.md terminology).
+_CATEGORY_LABELS: dict[str, str] = {
+    "rebalancing": "Rebalancing",
+    "grid_trading": "Grid Trading",
+    "yield_optimisation": "Yield Optimization",
+    "health_factor_monitoring": "Health Factor Monitoring",
+    "other": "Other",
+}
+
+
+def _category_label(value: str | None) -> str:
+    """Jinja filter — display name for a category value (unknown → title case)."""
+    if not value:
+        return "Other"
+    return _CATEGORY_LABELS.get(value, value.replace("_", " ").title())
+
+
+templates.env.filters["category_label"] = _category_label
+
+
 # CSRF token is derived from the session cookie. Templates call `{{ csrf_token() }}`
 # (see `favorites_card.html`, `agent_detail.html`); we register a contextfunction
 # so Jinja passes the render context — which FastAPI populates with `request` —
@@ -82,14 +107,37 @@ def _csrf_token_from_context(context: dict[str, Any]) -> str:
 templates.env.globals["csrf_token"] = _csrf_token_from_context
 
 
+@pass_context
+def _current_user_address(context: dict[str, Any]) -> str | None:
+    """Truncated session address for the navbar (0x1234…abcd) or None.
+
+    Reads the signed session cookie only — no DB query (DESIGN.md header:
+    logged-in state replaces "Sign in" with the truncated address).
+    """
+    request = context.get("request")
+    cookie = request.cookies.get(SESSION_COOKIE_NAME) if request is not None else None
+    address = _read_session(cookie)
+    if address is None:
+        return None
+    return f"{address[:6]}…{address[-4:]}"
+
+
+templates.env.globals["current_user_address"] = _current_user_address
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
 async def _list_agents_page(
-    page: int, page_size: int, q: str | None = None, category: str | None = None,
-    x402: bool | None = None, sort: str = "average_score",
+    page: int,
+    page_size: int,
+    q: str | None = None,
+    category: str | None = None,
+    x402: bool | None = None,
+    sort: str = "average_score",
+    owner: str | None = None,
 ) -> tuple[list[AgentCache], int]:
     """Run the same query as `routers.agents.list_agents` for template rendering."""
     from sqlalchemy import func, or_, select
@@ -107,6 +155,8 @@ async def _list_agents_page(
         base = base.where(or_(AgentCache.name.ilike(like), AgentCache.description.ilike(like)))
     if category:
         base = base.where(AgentCache.category == category)
+    if owner:
+        base = base.where(AgentCache.owner_address == owner)
     if x402 is not None:
         base = base.where(AgentCache.x402_supported.is_(x402))
 
@@ -117,6 +167,31 @@ async def _list_agents_page(
         total = int(await session.scalar(total_q) or 0)
         rows = (await session.scalars(list_q)).all()
     return list(rows), total
+
+
+async def _hires_count(agent_ids: list[str]) -> dict[str, int]:
+    """'Hired by N' counts — distinct addresses per agent with a paid hire.
+
+    One query for the whole page (T1 trust signal, DESIGN.md); keys are
+    canonical `agent_id`s so templates do `hires.get(agent.agent_id)`.
+    """
+    if not agent_ids:
+        return {}
+    from sqlalchemy import func, select
+
+    from app.db.models.hired_agent import HiredAgent, HiredStatus
+
+    q = (
+        select(HiredAgent.agent_id, func.count(func.distinct(HiredAgent.address)))
+        .where(
+            HiredAgent.agent_id.in_(agent_ids),
+            HiredAgent.status == HiredStatus.PAID,
+        )
+        .group_by(HiredAgent.agent_id)
+    )
+    async with AsyncSessionLocal() as session:
+        rows = (await session.execute(q)).all()
+    return {agent_id: int(count) for agent_id, count in rows}
 
 
 def _render(request: Request, template: str, context: dict[str, Any]) -> HTMLResponse:
@@ -140,22 +215,36 @@ async def home(
     category: str | None = None,
     x402: bool | None = None,
     sort: str = "average_score",
+    owner: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=24, ge=1, le=100),
 ) -> HTMLResponse:
     """Home: full page on first paint, partials on HTMX load-more."""
     items, total = await _list_agents_page(
-        page, page_size, q=q, category=category, x402=x402, sort=sort
+        page, page_size, q=q, category=category, x402=x402, sort=sort, owner=owner
     )
     total_pages = (total + page_size - 1) // page_size if total else 0
+    hire_price_usd = get_settings().x402_default_price_usd
+    hires = await _hires_count([a.agent_id for a in items])
     is_htmx = request.headers.get("HX-Request", "").lower() == "true"
     if is_htmx:
         # HTMX "load more" appends new cards without a wrapper (spec R4, S3).
         return _render(
             request,
             "partials/agent_card_htmx.html",
-            {"items": items, "page": page, "page_size": page_size, "sort": sort,
-             "q": q, "category": category, "x402": x402, "has_more": page < total_pages},
+            {
+                "items": items,
+                "page": page,
+                "page_size": page_size,
+                "sort": sort,
+                "q": q,
+                "category": category,
+                "x402": x402,
+                "owner": owner,
+                "has_more": page < total_pages,
+                "hires": hires,
+                "hire_price_usd": hire_price_usd,
+            },
         )
     return _render(
         request,
@@ -170,15 +259,16 @@ async def home(
             "q": q,
             "category": category,
             "x402": x402,
+            "owner": owner,
             "has_more": page < total_pages,
+            "hires": hires,
+            "hire_price_usd": hire_price_usd,
         },
     )
 
 
 @router.get("/agents/{chain_id}/{token_id}", response_class=HTMLResponse)
-async def agent_detail(
-    request: Request, chain_id: int, token_id: int
-) -> HTMLResponse:
+async def agent_detail(request: Request, chain_id: int, token_id: int) -> HTMLResponse:
     """Single-agent detail page (spec #22 + web-pages-x402 W1).
 
     FU-2: the hire CTA needs the agent's `pay_to` (payment wallet) and the
@@ -194,6 +284,7 @@ async def agent_detail(
         )
     if row is None:
         raise NotFound(f"agent {chain_id}:{token_id} not cached")
+    hires = await _hires_count([row.agent_id])
     return _render(
         request,
         "pages/agent_detail.html",
@@ -201,6 +292,7 @@ async def agent_detail(
             "agent": row,
             "pay_to": row.agent_wallet,
             "hire_price_usd": get_settings().x402_default_price_usd,
+            "hires": hires,
         },
     )
 
@@ -210,7 +302,6 @@ async def favorites(request: Request) -> HTMLResponse:
     """Auth-gated favorites page. Redirects to /auth for anonymous callers (spec S6)."""
     from fastapi.responses import RedirectResponse
 
-    from app.errors import AuthRequired
     from app.services.auth import SESSION_COOKIE_NAME, _read_session
 
     # `get_current_user` raises AuthRequired for anonymous callers; the
@@ -229,9 +320,7 @@ async def favorites(request: Request) -> HTMLResponse:
 
     async with AsyncSessionLocal() as session:
         rows = (
-            await session.scalars(
-                select(Favorite).where(Favorite.address == user.address)
-            )
+            await session.scalars(select(Favorite).where(Favorite.address == user.address))
         ).all()
     return _render(request, "pages/favorites.html", {"favorites": rows, "user": user})
 

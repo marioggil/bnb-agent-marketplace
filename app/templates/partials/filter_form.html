@@ -1,22 +1,23 @@
 {# Server-rendered filter form. GET submits are no-JS friendly; the same
-   form is HTMX-boostable in a follow-up change. #}
-<form method="get" action="/">
-  <label>Search <input type="text" name="q" value="{{ q or '' }}" /></label>
-  <label>Category
-    <select name="category">
-      <option value="">all</option>
-      {% for c in ['rebalancing', 'grid_trading', 'yield_optimisation', 'health_factor_monitoring', 'other'] %}
-        <option value="{{ c }}" {% if c == category %}selected{% endif %}>{{ c }}</option>
-      {% endfor %}
-    </select>
-  </label>
-  <label><input type="checkbox" name="x402" value="true" {% if x402 %}checked{% endif %} /> x402 only</label>
-  <label>Sort
-    <select name="sort">
-      {% for s in ['average_score', 'total_feedbacks', 'created_at', 'name'] %}
-        <option value="{{ s }}" {% if s == sort %}selected{% endif %}>{{ s }}</option>
-      {% endfor %}
-    </select>
-  </label>
-  <button type="submit">Apply</button>
+   form is HTMX-boostable in a follow-up change. One row that wraps on
+   mobile (DESIGN.md filters); category options show display names via the
+   `category_label` filter. #}
+<form method="get" action="/" class="filter-form">
+  {% if owner %}<input type="hidden" name="owner" value="{{ owner }}" />{% endif %}
+  <input type="text" name="q" value="{{ q or '' }}" placeholder="Search agents" aria-label="Search" />
+  <select name="category" aria-label="Category">
+    <option value="">All</option>
+    {% for c in ['rebalancing', 'grid_trading', 'yield_optimisation', 'health_factor_monitoring', 'other'] %}
+      <option value="{{ c }}" {% if c == category %}selected{% endif %}>{{ c | category_label }}</option>
+    {% endfor %}
+  </select>
+  <label class="check"><input type="checkbox" name="x402" value="true"
+         title="Payable via x402 — pay per request" {% if x402 %}checked{% endif %} /> x402 only</label>
+  <select name="sort" aria-label="Sort">
+    {% set _sort_labels = {'average_score': 'Top rated', 'total_feedbacks': 'Most rated', 'created_at': 'Newest', 'name': 'Name'} %}
+    {% for s in ['average_score', 'total_feedbacks', 'created_at', 'name'] %}
+      <option value="{{ s }}" {% if s == sort %}selected{% endif %}>{{ _sort_labels.get(s, s) }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn-primary">Apply</button>
 </form>

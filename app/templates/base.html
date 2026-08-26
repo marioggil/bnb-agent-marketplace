@@ -14,7 +14,12 @@
       <nav>
         <a href="/">Browse</a>
         <a href="/favorites">Favorites</a>
-        <a href="/auth" hx-boost="true">Sign in</a>
+        {% set _address = current_user_address() %}
+        {% if _address %}
+          <span class="user-address" title="Signed in wallet">{{ _address }}</span>
+        {% else %}
+          <a href="/auth" hx-boost="true">Sign in</a>
+        {% endif %}
       </nav>
     </header>
 

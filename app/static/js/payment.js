@@ -26,11 +26,14 @@
     var box = el("hire-status");
     if (!box) return;
     box.dataset.state = state;
-    var states = box.querySelectorAll("span[class^='status-']");
+    // State is driven by `is-*` classes on the container (DESIGN.md: prefer
+    // is-* classes over inline style.display); the CSS shows the matching
+    // .status-* span.
+    var states = ["idle", "pending", "paid", "failed"];
     for (var i = 0; i < states.length; i++) {
-      states[i].style.display =
-        states[i].className === "status-" + state ? "" : "none";
+      box.classList.remove("is-" + states[i]);
     }
+    box.classList.add("is-" + state);
     if (state === "failed" && message) {
       var err = el("hire-error");
       if (err) err.textContent = message;

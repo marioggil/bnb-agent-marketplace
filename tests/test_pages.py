@@ -12,11 +12,13 @@ from app.db.models.agent import (
 
 
 async def _seed_one(session, token_id: int = 1, name: str = "Alpha",
-                    image_url: str | None = None) -> str:
+                    image_url: str | None = None,
+                    owner_address: str | None = None) -> str:
     aid = build_agent_id(56, BSC_IDENTITY_REGISTRY, token_id)
     session.add(AgentCache(
         agent_id=aid, chain_id=BSC_CHAIN_ID, token_id=token_id,
         registry_address=BSC_IDENTITY_REGISTRY, name=name, image_url=image_url,
+        owner_address=owner_address,
         supported_protocols=[], cross_chain_versions=[], raw={}, created_at=_now(), updated_at=_now(),
         tags=[], categories=[],
     ))
@@ -29,6 +31,24 @@ async def test_home_full_html_renders_cards(client, db):
     aid = await _seed_one(db, 1, name="Alpha")
     body = client.get("/").text
     assert "<html" in body and "Alpha" in body
+
+
+# Design alignment (DESIGN.md D6/D8): the full home renders the hero partial
+# and the detail page renders the hire panel + trust signals. This pins the
+# template graph so a missing partial (TemplateNotFound) fails here, not in
+# production; the owner filter and the "Hired by" context are also covered.
+async def test_home_renders_hero_and_owner_filter(client, db):
+    await _seed_one(db, 1, name="Alpha", owner_address="0x" + "ab" * 20)
+    body = client.get("/").text
+    assert "Automate your investments with AI agents" in body
+    assert 'href="/?owner=' in body
+
+
+async def test_agent_detail_renders_hire_panel(client, db):
+    aid = await _seed_one(db, 1, name="Alpha")
+    body = client.get(f"/agents/56/1").text
+    assert 'id="hire-cta"' in body
+    assert 'id="hire-status"' in body
 
 
 # R2 — HTMX swap returns partial only.

@@ -1,0 +1,58 @@
+{# D6 — lightweight hero + category cards, full page only (included from
+   pages/home.html). The stepper and the full marketing landing are roadmap
+   and must not be built. Category cards filter the listing via ?category=. #}
+<section class="hero">
+  <h1>Automate your investments with AI agents</h1>
+  <p>Choose, activate, and let them work for you.</p>
+  <a class="btn btn-primary" href="/#listing">Explore agents</a>
+</section>
+
+<section class="category-grid" aria-label="Browse agents by category">
+  <a class="category-card" href="/?category=rebalancing">
+    <span class="cat-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 12h18" /><path d="M8 7l-5 5 5 5" /><path d="M16 7l5 5-5 5" />
+      </svg>
+    </span>
+    <h3>Rebalancing</h3>
+    <p class="tagline">Keeps your portfolio balanced</p>
+    <p class="example">Buys near $10, sells near $12</p>
+  </a>
+  <a class="category-card" href="/?category=grid_trading">
+    <span class="cat-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" aria-hidden="true">
+        <rect x="4" y="10" width="4" height="10" rx="1" />
+        <rect x="10" y="4" width="4" height="16" rx="1" />
+        <rect x="16" y="13" width="4" height="7" rx="1" />
+      </svg>
+    </span>
+    <h3>Grid Trading</h3>
+    <p class="tagline">Trades price ranges automatically</p>
+    <p class="example">Places orders in a band</p>
+  </a>
+  <a class="category-card" href="/?category=yield_optimisation">
+    <span class="cat-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 17l6-6 4 4 8-8" /><path d="M15 7h6v6" />
+      </svg>
+    </span>
+    <h3>Yield Optimization</h3>
+    <p class="tagline">Finds better yields for your assets</p>
+    <p class="example">Moves funds to the best vault</p>
+  </a>
+  <a class="category-card" href="/?category=health_factor_monitoring">
+    <span class="cat-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" />
+        <path d="M9 12l2 2 4-4" />
+      </svg>
+    </span>
+    <h3>Health Factor Monitoring</h3>
+    <p class="tagline">Protects your collateral</p>
+    <p class="example">Warns before your position drops</p>
+  </a>
+</section>

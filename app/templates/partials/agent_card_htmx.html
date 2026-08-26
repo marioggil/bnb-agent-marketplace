@@ -1,16 +1,7 @@
 {# HTMX variant of the agent card list. Used when the home route returns
    on HX-Request: true (load-more): each card is rendered for the swapped
-   batch, no page wrapper. Expects `items` in context. #}
+   batch, no page wrapper. Expects `items` in context. The card markup is
+   agent_card_core.html — the exact same card as the full-page variant. #}
 {% for agent in items %}
-<article class="agent-card">
-  <a href="/agents/{{ agent.chain_id }}/{{ agent.token_id }}">
-    <img src="{{ agent.image_url | img_fallback }}" alt="{{ agent.name or agent.agent_id }}"
-         onerror="this.onerror=null;this.src='/static/img/placeholder.svg'" />
-    <h3>{{ agent.name or agent.agent_id }}</h3>
-  </a>
-  <p class="meta">
-    <span class="category">{{ agent.category }}</span>
-    {% if agent.x402_supported %}<span class="badge x402">x402</span>{% endif %}
-  </p>
-</article>
+  {% include "partials/agent_card_core.html" %}
 {% endfor %}
