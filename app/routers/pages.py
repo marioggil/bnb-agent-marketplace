@@ -194,6 +194,107 @@ async def _hires_count(agent_ids: list[str]) -> dict[str, int]:
     return {agent_id: int(count) for agent_id, count in rows}
 
 
+# ---------------------------------------------------------------------------
+# Agent profile (detail page technical sheet) — category study §8
+# ---------------------------------------------------------------------------
+
+
+def _hex_to_text(value: str | None) -> str | None:
+    """Decode an 0x hex string stored by the upstream (onchain key/value)."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        if value.startswith("0x"):
+            return bytes.fromhex(value[2:]).decode("utf-8", "replace")
+        return value
+    except (ValueError, TypeError):
+        return None
+
+
+def _onchain_value(agent: Any, key: str) -> str | None:
+    """First `value` for `key` inside raw_metadata.onchain entries."""
+    rm = agent.raw_metadata or {}
+    for entry in rm.get("onchain") or []:
+        if isinstance(entry, dict) and entry.get("key") == key:
+            return entry.get("value")
+    return None
+
+
+def _offchain(agent: Any) -> dict[str, Any]:
+    """The off-chain agent definition from raw_metadata, or {}."""
+    rm = agent.raw_metadata or {}
+    if not isinstance(rm, dict):
+        return {}
+    oc = rm.get("offchain_content")
+    return oc if isinstance(oc, dict) else {}
+
+
+def _build_agent_profile(agent: Any) -> dict[str, Any]:
+    """Flatten the technical sheet fields (category study §8) for the
+    detail template. All values are source-reported; the template renders
+    them as-is with '—' fallbacks, never a judgment."""
+    off = _offchain(agent) or {}
+    termix = off.get("termix") or {}
+    services = agent.services or {}
+
+    platform = _hex_to_text(_onchain_value(agent, "platform"))
+    if not platform and off.get("termix"):
+        platform = "Termix"
+
+    a2a = services.get("a2a") or {}
+    if not a2a:
+        for svc in off.get("services") or []:
+            if isinstance(svc, dict) and svc.get("name") == "A2A":
+                a2a = svc
+                break
+
+    health = agent.health_status
+    if isinstance(health, str):
+        health = {"overall_status": health}
+
+    breakdown = (agent.scores or {}).get("breakdown") or {}
+    dimensions = []
+    for name, dim in (breakdown.get("dimensions") or {}).items():
+        if isinstance(dim, dict) and dim.get("score") is not None:
+            dimensions.append(
+                {"name": name, "score": dim.get("score"), "weight": dim.get("weight")}
+            )
+
+    parse = agent.parse_status or {}
+    health_services = []
+    if isinstance(health, dict):
+        for name, svc in (health.get("services") or {}).items():
+            if isinstance(svc, dict):
+                health_services.append(
+                    {
+                        "name": name,
+                        "status": svc.get("status"),
+                        "latency_ms": svc.get("latency_ms"),
+                        "domain_verified": svc.get("domain_verified"),
+                    }
+                )
+
+    return {
+        "platform": platform,
+        "termix_category": (termix.get("profile") or {}).get("category"),
+        "tags": off.get("tags") or agent.tags or [],
+        "a2a_endpoint": a2a.get("endpoint"),
+        "a2a_version": a2a.get("version"),
+        "a2a_skills": a2a.get("skills") or [],
+        "built_with": _hex_to_text(_onchain_value(agent, "built_with")),
+        "hireable": bool(agent.x402_supported and agent.agent_wallet),
+        "wallet": agent.agent_wallet,
+        "health_score": agent.health_score,
+        "health_status": (health or {}).get("overall_status") if isinstance(health, dict) else None,
+        "health_services": health_services,
+        "metadata_completeness": agent.metadata_completeness_score,
+        "score_dimensions": dimensions,
+        "parse_status": parse.get("status") if isinstance(parse, dict) else None,
+        "parse_errors": len(parse.get("errors") or []) if isinstance(parse, dict) else 0,
+        "parse_warnings": len(parse.get("warnings") or []) if isinstance(parse, dict) else 0,
+    }
+
+
 def _render(request: Request, template: str, context: dict[str, Any]) -> HTMLResponse:
     """Wrap `TemplateResponse` so the request stays in `context`."""
     context.setdefault("request", request)
@@ -293,6 +394,7 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> HTMLRe
             "pay_to": row.agent_wallet,
             "hire_price_usd": get_settings().x402_default_price_usd,
             "hires": hires,
+            "profile": _build_agent_profile(row),
         },
     )
 

@@ -32,6 +32,81 @@
     <dt>Protocols</dt><dd>{{ agent.supported_protocols | join(', ') or '—' }}</dd>
   </dl>
 
+  <!-- Technical sheet (category study §8): source-reported fields rendered
+       as-is. Identity + quality signals; never a judgment. -->
+  <section class="agent-profile">
+    <h2>Agent profile</h2>
+    <dl>
+      <dt>Platform</dt><dd>{{ profile.platform or '—' }}</dd>
+      {% if profile.termix_category %}
+        <dt>Source category</dt><dd>{{ profile.termix_category }}</dd>
+      {% endif %}
+      {% if profile.tags %}
+        <dt>Tags</dt>
+        <dd class="tag-list">
+          {% for t in profile.tags %}<span class="badge category">{{ t }}</span>{% endfor %}
+        </dd>
+      {% endif %}
+      <dt>Services</dt>
+      <dd>
+        {% if profile.a2a_endpoint %}
+          A2A v{{ profile.a2a_version or '?' }} &mdash; <code>{{ profile.a2a_endpoint }}</code>
+        {% else %}
+          Web
+        {% endif %}
+      </dd>
+      {% if profile.a2a_skills %}
+        <dt>A2A skills</dt><dd>{{ profile.a2a_skills | map(attribute='name') | join(', ') }}</dd>
+      {% endif %}
+      <dt>Payment</dt>
+      <dd>
+        {% if profile.hireable %}
+          <span class="badge x402">x402</span> wallet <code>{{ profile.wallet[:6] }}&hellip;{{ profile.wallet[-4:] }}</code>
+        {% else %}
+          Not hireable &mdash; no payment wallet
+        {% endif %}
+      </dd>
+      {% if profile.built_with %}
+        <dt>Built with</dt><dd>{{ profile.built_with }}</dd>
+      {% endif %}
+      <dt>Endpoint health</dt>
+      <dd>
+        {% if profile.health_score is not none %}
+          {{ '%.0f'|format(profile.health_score) }}/100
+          {% if profile.health_status %} &middot; {{ profile.health_status }}{% endif %}
+          {% if profile.health_services %}
+            <ul class="health-services">
+              {% for s in profile.health_services %}
+                <li>{{ s.name }}: {{ s.status or 'unknown' }}{% if s.latency_ms is not none %} ({{ '%.0f'|format(s.latency_ms) }}ms){% endif %}{% if s.domain_verified %} &middot; verified{% endif %}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        {% else %}
+          not measured
+        {% endif %}
+      </dd>
+      <dt>Metadata completeness</dt>
+      <dd>{{ profile.metadata_completeness or 0 }}/100</dd>
+      {% if profile.score_dimensions %}
+        <dt>Score breakdown</dt>
+        <dd>
+          <ul class="score-dimensions">
+            {% for d in profile.score_dimensions %}
+              <li>{{ d.name }}: {{ '%.0f'|format(d.score) }}{% if d.weight is not none %} (weight {{ '%.2f'|format(d.weight) }}){% endif %}</li>
+            {% endfor %}
+          </ul>
+        </dd>
+      {% endif %}
+      <dt>Parse status</dt>
+      <dd>
+        {{ profile.parse_status or '—' }}
+        {% if profile.parse_errors or profile.parse_warnings %}
+          &middot; {{ profile.parse_errors }} errors, {{ profile.parse_warnings }} warnings
+        {% endif %}
+      </dd>
+    </dl>
+  </section>
+
   <!-- x402 hire panel (FU-2, spec web-pages-x402 W1/W3/W4). The CTA is priced
        at X402_DEFAULT_PRICE_USD ($1.00) and gated when the agent has no
        payment wallet (payTo); the status UI is driven by payment.js. -->
