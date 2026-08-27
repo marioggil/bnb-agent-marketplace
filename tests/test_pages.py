@@ -248,6 +248,8 @@ async def test_agent_detail_mcp_info_renders(client, db, monkeypatch):
     assert "2 available" in body
     assert "pay_tool" in body
     assert "balance_tool" in body
+    assert "Make a payment" in body
+    assert "Check balance" in body
     assert "npm" in body
     assert "npx -y @example/mcp-server@latest" in body
 

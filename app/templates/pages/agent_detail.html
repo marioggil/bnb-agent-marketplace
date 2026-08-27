@@ -276,28 +276,13 @@
       {% endif %}
       {% if mcp_info.get('tools') %}
         <dt>Tools</dt><dd>{{ mcp_info.tools | length }} available</dd>
-        <dt>Tool categories</dt>
+        <dt>Tool details</dt>
         <dd>
-          <div class="mcp-tools-grid">
-            {% set categories = {} %}
+          <div class="mcp-tools-list">
             {% for tool in mcp_info.tools %}
-              {% set prefix = tool.name.split('_')[1] if '_' in tool.name else 'other' %}
-              {% if prefix not in categories %}
-                {% set _ = categories.update({prefix: []}) %}
-              {% endif %}
-              {% set _ = categories[prefix].append(tool) %}
-            {% endfor %}
-            {% for cat, tools in categories.items() | sort %}
-              <div class="mcp-category">
-                <strong>{{ cat }}</strong> ({{ tools | length }})
-                <ul>
-                  {% for tool in tools[:3] %}
-                    <li><code>{{ tool.name }}</code></li>
-                  {% endfor %}
-                  {% if tools | length > 3 %}
-                    <li class="text-muted">+{{ tools | length - 3 }} more</li>
-                  {% endif %}
-                </ul>
+              <div class="mcp-tool-item">
+                <code>{{ tool.name }}</code>
+                <span class="mcp-tool-desc">{{ tool.description }}</span>
               </div>
             {% endfor %}
           </div>

@@ -579,6 +579,39 @@ header nav .user-address { color: var(--color-text); cursor: default; }
   margin-bottom: var(--space-1);
 }
 
+.mcp-tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 400px;
+  overflow-y: auto;
+  padding: var(--space-2);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+}
+
+.mcp-tool-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.mcp-tool-item:last-child {
+  border-bottom: none;
+}
+
+.mcp-tool-item code {
+  font-weight: var(--weight-semibold);
+  color: var(--color-accent);
+}
+
+.mcp-tool-desc {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
 /* ---------------------------------------------------------------------------
  * Hire panel (agent detail)
  * ------------------------------------------------------------------------ */
