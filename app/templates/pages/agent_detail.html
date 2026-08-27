@@ -260,6 +260,75 @@
   </section>
   {% endif %}
 
+  <!-- MCP server info: live data from the MCP endpoint -->
+  {% if mcp_info %}
+  <section class="agent-profile mcp-card">
+    <h2>MCP Server Info</h2>
+    <dl>
+      {% if mcp_info.get('name') %}
+        <dt>Package</dt><dd><code>{{ mcp_info.name }}</code></dd>
+      {% endif %}
+      {% if mcp_info.get('version') %}
+        <dt>Version</dt><dd>{{ mcp_info.version }}</dd>
+      {% endif %}
+      {% if mcp_info.get('transport') %}
+        <dt>Transport</dt><dd>{{ mcp_info.transport }}</dd>
+      {% endif %}
+      {% if mcp_info.get('tools') %}
+        <dt>Tools</dt><dd>{{ mcp_info.tools | length }} available</dd>
+        <dt>Tool categories</dt>
+        <dd>
+          <div class="mcp-tools-grid">
+            {% set categories = {} %}
+            {% for tool in mcp_info.tools %}
+              {% set prefix = tool.name.split('_')[1] if '_' in tool.name else 'other' %}
+              {% if prefix not in categories %}
+                {% set _ = categories.update({prefix: []}) %}
+              {% endif %}
+              {% set _ = categories[prefix].append(tool) %}
+            {% endfor %}
+            {% for cat, tools in categories.items() | sort %}
+              <div class="mcp-category">
+                <strong>{{ cat }}</strong> ({{ tools | length }})
+                <ul>
+                  {% for tool in tools[:3] %}
+                    <li><code>{{ tool.name }}</code></li>
+                  {% endfor %}
+                  {% if tools | length > 3 %}
+                    <li class="text-muted">+{{ tools | length - 3 }} more</li>
+                  {% endif %}
+                </ul>
+              </div>
+            {% endfor %}
+          </div>
+        </dd>
+      {% endif %}
+      {% if mcp_info.get('registry') %}
+        <dt>Registry</dt>
+        <dd>
+          {% for name, url in mcp_info.registry.items() %}
+            <a href="{{ url }}" target="_blank" rel="noopener">{{ name }}</a>{% if not loop.last %} &middot; {% endif %}
+          {% endfor %}
+        </dd>
+      {% endif %}
+      {% if mcp_info.get('install') %}
+        <dt>Install</dt>
+        <dd>
+          {% for cmd, value in mcp_info.install.items() %}
+            <div><strong>{{ cmd }}:</strong> <code>{{ value }}</code></div>
+          {% endfor %}
+        </dd>
+      {% endif %}
+      {% if mcp_info.get('docs') %}
+        <dt>Docs</dt><dd><a href="{{ mcp_info.docs }}" target="_blank" rel="noopener">{{ mcp_info.docs }}</a></dd>
+      {% endif %}
+      {% if mcp_info.get('dashboard') %}
+        <dt>Dashboard</dt><dd><a href="{{ mcp_info.dashboard }}" target="_blank" rel="noopener">{{ mcp_info.dashboard }}</a></dd>
+      {% endif %}
+    </dl>
+  </section>
+  {% endif %}
+
   <!-- x402 hire panel (FU-2, spec web-pages-x402 W1/W3/W4). The CTA is priced
        at X402_DEFAULT_PRICE_USD ($1.00) and gated when the agent has no
        payment wallet (payTo); the status UI is driven by payment.js. -->

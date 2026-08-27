@@ -508,6 +508,7 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
     # Fetch supplementary platform card data (Termix or EvoEvo).
     termix_card: dict[str, Any] | None = None
     evoevo_card: dict[str, Any] | None = None
+    mcp_info: dict[str, Any] | None = None
 
     platform_name = profile.get("platform")
     if platform_name == "Termix":
@@ -518,6 +519,13 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
         from app.services.client_evoevo import fetch_evoevo_card
 
         evoevo_card = await fetch_evoevo_card(token_id)
+
+    # Fetch MCP server info for agents with MCP services.
+    mcp_endpoint = (row.services or {}).get("mcp", {}).get("endpoint")
+    if mcp_endpoint:
+        from app.services.client_mcp import fetch_mcp_info
+
+        mcp_info = await fetch_mcp_info(mcp_endpoint)
 
     hires = await _hires_count([row.agent_id])
     return _render(
@@ -531,6 +539,7 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             "profile": profile,
             "termix_card": termix_card,
             "evoevo_card": evoevo_card,
+            "mcp_info": mcp_info,
         },
     )
 

@@ -205,6 +205,53 @@ async def test_agent_detail_eip8004_registration_renders(client, db):
     assert "Domain proof" in body
 
 
+async def test_agent_detail_mcp_info_renders(client, db, monkeypatch):
+    """Agents with MCP services get their MCP info fetched and rendered."""
+    from unittest.mock import AsyncMock, patch
+
+    await _seed_one(db, 1, name="MCPAgent")
+    async with db.begin():
+        from app.db.models.agent import AgentCache
+
+        row = await db.scalar(select(AgentCache).where(AgentCache.token_id == 1))
+        row.services = {
+            "mcp": {
+                "endpoint": "https://example.com/mcp/info",
+                "tools": [],
+                "prompts": [],
+                "resources": [],
+            }
+        }
+
+    mock_mcp = {
+        "name": "@example/mcp-server",
+        "version": "1.0.0",
+        "transport": "stdio",
+        "tools": [
+            {"name": "pay_tool", "description": "Make a payment"},
+            {"name": "balance_tool", "description": "Check balance"},
+        ],
+        "registry": {"npm": "https://npmjs.com/package/example-mcp"},
+        "install": {"npx": "npx -y @example/mcp-server@latest"},
+        "docs": "https://example.com/docs",
+        "dashboard": "https://example.com/dashboard",
+    }
+    with patch(
+        "app.services.client_mcp.fetch_mcp_info",
+        new_callable=AsyncMock,
+        return_value=mock_mcp,
+    ):
+        body = client.get("/agents/56/1").text
+    assert "MCP Server Info" in body
+    assert "@example/mcp-server" in body
+    assert "1.0.0" in body
+    assert "2 available" in body
+    assert "pay_tool" in body
+    assert "balance_tool" in body
+    assert "npm" in body
+    assert "npx -y @example/mcp-server@latest" in body
+
+
 # R5 — image fallback renders /static/img/placeholder.svg.
 async def test_image_fallback_to_placeholder(client, db):
     await _seed_one(db, 1, name="NoImage", image_url=None)
