@@ -368,6 +368,19 @@ def _build_agent_profile(agent: Any) -> dict[str, Any]:
         "parse_status": parse.get("status") if isinstance(parse, dict) else None,
         "parse_errors": len(parse.get("errors") or []) if isinstance(parse, dict) else 0,
         "parse_warnings": len(parse.get("warnings") or []) if isinstance(parse, dict) else 0,
+        # EIP-8004 registration data from offchain_content
+        "offchain_name": off.get("name"),
+        "offchain_description": off.get("description"),
+        "offchain_active": off.get("active"),
+        "offchain_x402": off.get("x402Support"),
+        "offchain_services": off.get("services") or [],
+        "offchain_attributes": off.get("attributes") or [],
+        "offchain_image": off.get("image"),
+        "domain_proof": next(
+            (a["value"] for a in (off.get("attributes") or [])
+             if isinstance(a, dict) and a.get("trait_type") == "Domain proof"),
+            None,
+        ),
     }
 
 

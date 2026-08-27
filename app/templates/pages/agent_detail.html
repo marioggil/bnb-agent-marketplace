@@ -201,6 +201,65 @@
   </section>
   {% endif %}
 
+  <!-- EIP-8004 registration data: rich metadata from the offchain agent definition -->
+  {% if profile.offchain_services or profile.offchain_attributes %}
+  <section class="agent-profile eip8004-card">
+    <h2>EIP-8004 registration data</h2>
+    <dl>
+      {% if profile.offchain_name %}
+        <dt>Registration name</dt><dd>{{ profile.offchain_name }}</dd>
+      {% endif %}
+      {% if profile.offchain_active is not none %}
+        <dt>Active</dt>
+        <dd>
+          <span class="badge {% if profile.offchain_active %}verified{% else %}category{% endif %}">
+            {{ 'yes' if profile.offchain_active else 'no' }}
+          </span>
+        </dd>
+      {% endif %}
+      {% if profile.offchain_x402 is not none %}
+        <dt>x402 support</dt>
+        <dd>
+          <span class="badge {% if profile.offchain_x402 %}x402{% else %}category{% endif %}">
+            {{ 'yes' if profile.offchain_x402 else 'no' }}
+          </span>
+        </dd>
+      {% endif %}
+      {% if profile.domain_proof %}
+        <dt>Domain proof</dt><dd><a href="{{ profile.domain_proof }}" target="_blank" rel="noopener">{{ profile.domain_proof }}</a></dd>
+      {% endif %}
+      {% if profile.offchain_services %}
+        <dt>Services</dt>
+        <dd>
+          {% for svc in profile.offchain_services %}
+            <div class="offchain-service">
+              <strong>{{ svc.name }}</strong>
+              {% if svc.endpoint %} &mdash; <code>{{ svc.endpoint }}</code>{% endif %}
+              {% if svc.description %}<br/><span class="text-muted">{{ svc.description }}</span>{% endif %}
+              {% if svc.needs %}
+                <br/>Needs: {% for k, v in svc.needs.items() %}<code>{{ k }}</code> ({{ v }}){% if not loop.last %}, {% endif %}{% endfor %}
+              {% endif %}
+            </div>
+          {% endfor %}
+        </dd>
+      {% endif %}
+      {% if profile.offchain_attributes %}
+        <dt>Attributes</dt>
+        <dd>
+          <dl class="attr-list">
+            {% for attr in profile.offchain_attributes %}
+              <dt>{{ attr.trait_type }}</dt><dd>{{ attr.value }}</dd>
+            {% endfor %}
+          </dl>
+        </dd>
+      {% endif %}
+      {% if profile.offchain_image %}
+        <dt>Registration image</dt><dd><img src="{{ profile.offchain_image }}" alt="registration image" class="evoevo-avatar" /></dd>
+      {% endif %}
+    </dl>
+  </section>
+  {% endif %}
+
   <!-- x402 hire panel (FU-2, spec web-pages-x402 W1/W3/W4). The CTA is priced
        at X402_DEFAULT_PRICE_USD ($1.00) and gated when the agent has no
        payment wallet (payTo); the status UI is driven by payment.js. -->

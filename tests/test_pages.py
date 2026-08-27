@@ -170,6 +170,41 @@ async def test_agent_detail_evoevo_card_renders(client, db, monkeypatch):
     assert "eip155:56:0xabc" in body
 
 
+async def test_agent_detail_eip8004_registration_renders(client, db):
+    """Agents with offchain_content show EIP-8004 registration data."""
+    await _seed_one(db, 1, name="BrainAgent")
+    async with db.begin():
+        from app.db.models.agent import AgentCache
+
+        row = await db.scalar(select(AgentCache).where(AgentCache.token_id == 1))
+        row.raw_metadata = {
+            "offchain_content": {
+                "name": "Brain on BNB",
+                "active": True,
+                "x402Support": True,
+                "services": [
+                    {
+                        "name": "rebalance_plan",
+                        "endpoint": "https://agent.example.com/a2a",
+                        "description": "Portfolio rebalance service",
+                        "needs": {"holdings": "array of tokens"},
+                    }
+                ],
+                "attributes": [
+                    {"trait_type": "Category", "value": "rebalancing"},
+                    {"trait_type": "Domain proof", "value": "https://example.com/.well-known/agent-registration.json"},
+                ],
+            },
+        }
+    body = client.get("/agents/56/1").text
+    assert "EIP-8004 registration data" in body
+    assert "Brain on BNB" in body
+    assert "rebalance_plan" in body
+    assert "Portfolio rebalance service" in body
+    assert "rebalancing" in body
+    assert "Domain proof" in body
+
+
 # R5 — image fallback renders /static/img/placeholder.svg.
 async def test_image_fallback_to_placeholder(client, db):
     await _seed_one(db, 1, name="NoImage", image_url=None)
