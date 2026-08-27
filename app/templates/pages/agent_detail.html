@@ -260,6 +260,93 @@
   </section>
   {% endif %}
 
+  <!-- OASF Runtime Skills: skills from the OASF runtime -->
+  {% if profile.oasf_skills or profile.oasf_domains %}
+  <section class="agent-profile oasf-card">
+    <h2>OASF Runtime Skills</h2>
+    <dl>
+      {% if profile.oasf_skills %}
+        <dt>Skills</dt>
+        <dd>
+          <div class="oasf-skills-grid">
+            {% for skill in profile.oasf_skills %}
+              {% set parts = skill.split('/') %}
+              <div class="oasf-skill">
+                <span class="oasf-skill-category">{{ parts[0] }}</span>
+                <span class="oasf-skill-name">{{ parts[1] if parts|length > 1 else skill }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        </dd>
+      {% endif %}
+      {% if profile.oasf_domains %}
+        <dt>Domains</dt>
+        <dd>
+          <div class="oasf-skills-grid">
+            {% for domain in profile.oasf_domains %}
+              {% set parts = domain.split('/') %}
+              <div class="oasf-skill">
+                <span class="oasf-skill-category">{{ parts[0] }}</span>
+                <span class="oasf-skill-name">{{ parts[1] if parts|length > 1 else domain }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        </dd>
+      {% endif %}
+      {% if profile.documentation_url %}
+        <dt>Documentation</dt><dd><a href="{{ profile.documentation_url }}" target="_blank" rel="noopener">{{ profile.documentation_url }}</a></dd>
+      {% endif %}
+      {% if profile.protocol_version %}
+        <dt>Protocol version</dt><dd>{{ profile.protocol_version }}</dd>
+      {% endif %}
+    </dl>
+  </section>
+  {% endif %}
+
+  <!-- Social links & Provider info -->
+  {% if profile.social_links or profile.provider %}
+  <section class="agent-profile social-card">
+    <h2>Links &amp; Provider</h2>
+    <dl>
+      {% if profile.provider %}
+        {% if profile.provider.get('organization') %}
+          <dt>Provider</dt><dd>{{ profile.provider.organization }}</dd>
+        {% endif %}
+        {% if profile.provider.get('url') %}
+          <dt>Provider URL</dt><dd><a href="{{ profile.provider.url }}" target="_blank" rel="noopener">{{ profile.provider.url }}</a></dd>
+        {% endif %}
+      {% endif %}
+      {% if profile.social_links %}
+        <dt>Social</dt>
+        <dd>
+          <div class="social-links">
+            {% if profile.social_links.get('web') %}
+              <a href="{{ profile.social_links.web }}" target="_blank" rel="noopener" class="social-link">Web</a>
+            {% endif %}
+            {% if profile.social_links.get('twitter') %}
+              <a href="{{ profile.social_links.twitter }}" target="_blank" rel="noopener" class="social-link">Twitter</a>
+            {% endif %}
+            {% if profile.social_links.get('telegram') %}
+              <a href="{{ profile.social_links.telegram }}" target="_blank" rel="noopener" class="social-link">Telegram</a>
+            {% endif %}
+            {% if profile.social_links.get('email') %}
+              <a href="mailto:{{ profile.social_links.email }}" class="social-link">Email</a>
+            {% endif %}
+          </div>
+        </dd>
+      {% endif %}
+      {% if profile.capabilities %}
+        <dt>Capabilities</dt>
+        <dd>
+          {% for cap, enabled in profile.capabilities.items() %}
+            <span class="badge {% if enabled %}verified{% else %}category{% endif %}">{{ cap }}</span>
+          {% endfor %}
+        </dd>
+      {% endif %}
+    </dl>
+  </section>
+  {% endif %}
+
   <!-- MCP server info: live data from the MCP endpoint -->
   {% if mcp_info %}
   <section class="agent-profile mcp-card">

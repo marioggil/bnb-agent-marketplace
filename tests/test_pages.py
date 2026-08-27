@@ -254,6 +254,52 @@ async def test_agent_detail_mcp_info_renders(client, db, monkeypatch):
     assert "npx -y @example/mcp-server@latest" in body
 
 
+async def test_agent_detail_oasf_and_social_renders(client, db):
+    """Agents with OASF skills and social links show them."""
+    await _seed_one(db, 1, name="OASF Agent")
+    async with db.begin():
+        from app.db.models.agent import AgentCache
+
+        row = await db.scalar(select(AgentCache).where(AgentCache.token_id == 1))
+        row.raw_metadata = {
+            "offchain_content": {
+                "name": "Test Agent",
+                "active": True,
+                "services": [
+                    {
+                        "name": "OASF",
+                        "skills": ["reasoning/planning", "orchestration/delegation"],
+                        "domains": ["blockchain/defi", "finance/investment"],
+                        "version": "1.0.0",
+                        "endpoint": "https://example.com/runtime",
+                    },
+                    {"name": "web", "endpoint": "https://example.com"},
+                    {"name": "twitter", "endpoint": "https://x.com/example"},
+                    {"name": "telegram", "endpoint": "https://t.me/example"},
+                    {"name": "email", "endpoint": "contact@example.com"},
+                ],
+                "provider": {"organization": "Example Corp", "url": "https://example.com"},
+                "capabilities": {"streaming": True, "pushNotifications": False},
+                "documentationUrl": "https://docs.example.com",
+                "protocolVersion": "1.0.0",
+            },
+        }
+    body = client.get("/agents/56/1").text
+    assert "OASF Runtime Skills" in body
+    assert "reasoning" in body
+    assert "planning" in body
+    assert "orchestration" in body
+    assert "delegation" in body
+    assert "blockchain" in body
+    assert "defi" in body
+    assert "Links &amp; Provider" in body
+    assert "Example Corp" in body
+    assert "Twitter" in body
+    assert "Telegram" in body
+    assert "contact@example.com" in body
+    assert "streaming" in body
+
+
 # R5 — image fallback renders /static/img/placeholder.svg.
 async def test_image_fallback_to_placeholder(client, db):
     await _seed_one(db, 1, name="NoImage", image_url=None)

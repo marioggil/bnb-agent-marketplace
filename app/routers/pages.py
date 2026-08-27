@@ -350,6 +350,24 @@ def _build_agent_profile(agent: Any) -> dict[str, Any]:
                     }
                 )
 
+    # Extract OASF data from offchain services
+    oASF_skills = []
+    oasf_domains = []
+    for svc in off.get("services") or []:
+        if isinstance(svc, dict) and svc.get("name") == "OASF":
+            oASF_skills = svc.get("skills") or []
+            oasf_domains = svc.get("domains") or []
+            break
+
+    # Extract social links from offchain services
+    social_links = {}
+    for svc in off.get("services") or []:
+        if isinstance(svc, dict):
+            svc_name = (svc.get("name") or "").lower()
+            svc_endpoint = svc.get("endpoint")
+            if svc_name in ("twitter", "telegram", "email", "web") and svc_endpoint:
+                social_links[svc_name] = svc_endpoint
+
     return {
         "platform": platform,
         "termix_category": (termix.get("profile") or {}).get("category"),
@@ -381,6 +399,19 @@ def _build_agent_profile(agent: Any) -> dict[str, Any]:
              if isinstance(a, dict) and a.get("trait_type") == "Domain proof"),
             None,
         ),
+        # OASF runtime data
+        "oasf_skills": oASF_skills,
+        "oasf_domains": oasf_domains,
+        # Social links
+        "social_links": social_links,
+        # Provider info
+        "provider": off.get("provider") or {},
+        # Capabilities
+        "capabilities": off.get("capabilities") or {},
+        # Documentation
+        "documentation_url": off.get("documentationUrl"),
+        # Protocol info
+        "protocol_version": off.get("protocolVersion"),
     }
 
 
