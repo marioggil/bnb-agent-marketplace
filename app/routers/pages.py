@@ -257,7 +257,7 @@ def _platform_expression(platform: str, dialect: str = "postgresql") -> Any:
         # compare with the hex string.  .astext only works on column
         # accessors (column["key"]), not on generic func() results.
         evo_raw = func.jsonb_path_query_first(
-            AgentCache.raw_metadata, '$.onchain[*] ? (@.key == "platform")'
+            AgentCache.raw_metadata, '$.onchain[*] ? (@.key == "platform").value'
         )
         evo = cast(evo_raw, String) == _EVOEVO_PLATFORM_HEX
     else:
