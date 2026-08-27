@@ -244,24 +244,31 @@ def _platform_expression(platform: str, dialect: str = "postgresql") -> Any:
 
     EvoEvo agents carry `onchain[].key == "platform"` with the hex-encoded
     value; Termix agents carry `offchain_content.termix`; everything else
-    is `other`. Postgres uses the exact jsonb path query; the sqlite
-    fallback (test harness only) matches the hex substring.
+    is `other`. Postgres uses a raw EXISTS subquery for maximum compat;
+    the sqlite fallback (test harness only) matches the hex substring.
     """
-    from sqlalchemy import String, cast, func, or_
+    from sqlalchemy import false, func, or_, text
 
-    termix = _json_text(AgentCache.raw_metadata, ["offchain_content", "termix"], dialect).is_not(
-        None
+    # termix uses IS NOT NULL which can yield NULL for agents without
+    # offchain_content at all; coerce to false so ~or_(evo, termix) works.
+    termix = func.coalesce(
+        _json_text(AgentCache.raw_metadata, ["offchain_content", "termix"], dialect).is_not(
+            None
+        ),
+        false(),
     )
     if dialect == "postgresql":
-        # jsonb_path_query_first returns jsonb; cast to text so we can
-        # compare with the hex string.  .astext only works on column
-        # accessors (column["key"]), not on generic func() results.
-        evo_raw = func.jsonb_path_query_first(
-            AgentCache.raw_metadata, '$.onchain[*] ? (@.key == "platform").value'
-        )
-        evo = cast(evo_raw, String) == _EVOEVO_PLATFORM_HEX
+        # EXISTS (SELECT 1 FROM jsonb_array_elements(raw_metadata->'onchain')
+        #   AS oe WHERE oe->>'key'='platform' AND oe->>'value'=:hex)
+        # Uses ->> (works on all Postgres 9.4+) instead of jsonb_path_query_first
+        # which may not be available on older versions.
+        evo = text(
+            "EXISTS (SELECT 1 FROM jsonb_array_elements(agent_cache.raw_metadata"
+            "->'onchain') AS oe WHERE oe->>'key' = 'platform'"
+            " AND oe->>'value' = :hex)"
+        ).bindparams(hex=_EVOEVO_PLATFORM_HEX)
     else:
-        # sqlite test harness: no jsonb_path_query_first; approximate match.
+        # sqlite test harness: no jsonb_array_elements; approximate match.
         evo = _json_text(AgentCache.raw_metadata, ["onchain"], dialect).like(
             f"%{_EVOEVO_PLATFORM_HEX}%"
         )
