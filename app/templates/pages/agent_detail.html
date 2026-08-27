@@ -152,6 +152,55 @@
   </section>
   {% endif %}
 
+  <!-- EvoEvo enrichment: live data from the EvoEvo Registration API (EIP-8004) -->
+  {% if evoevo_card %}
+  <section class="agent-profile evoevo-card">
+    <h2>EvoEvo live data</h2>
+    <dl>
+      {% if evoevo_card.get('name') %}
+        <dt>Registration name</dt><dd>{{ evoevo_card.name }}</dd>
+      {% endif %}
+      {% if evoevo_card.get('description') %}
+        <dt>Description</dt><dd>{{ evoevo_card.description }}</dd>
+      {% endif %}
+      <dt>Active</dt>
+      <dd>
+        <span class="badge {% if evoevo_card.get('active') %}verified{% else %}category{% endif %}">
+          {{ 'yes' if evoevo_card.get('active') else 'no' }}
+        </span>
+      </dd>
+      <dt>x402 support</dt>
+      <dd>
+        <span class="badge {% if evoevo_card.get('x402Support') %}x402{% else %}category{% endif %}">
+          {{ 'yes' if evoevo_card.get('x402Support') else 'no' }}
+        </span>
+      </dd>
+      {% if evoevo_card.get('services') %}
+        <dt>Services</dt>
+        <dd>
+          {% for svc in evoevo_card.services %}
+            <div>{{ svc.name }}: <code>{{ svc.endpoint }}</code></div>
+          {% endfor %}
+        </dd>
+      {% endif %}
+      {% if evoevo_card.get('registrations') %}
+        <dt>Registrations</dt>
+        <dd>
+          {% for reg in evoevo_card.registrations %}
+            <div>
+              agentId: {{ reg.agentId }}
+              &middot; registry: <code>{{ reg.agentRegistry }}</code>
+            </div>
+          {% endfor %}
+        </dd>
+      {% endif %}
+      {% if evoevo_card.get('image') %}
+        <dt>Avatar</dt><dd><img src="{{ evoevo_card.image }}" alt="avatar" class="evoevo-avatar" /></dd>
+      {% endif %}
+    </dl>
+  </section>
+  {% endif %}
+
   <!-- x402 hire panel (FU-2, spec web-pages-x402 W1/W3/W4). The CTA is priced
        at X402_DEFAULT_PRICE_USD ($1.00) and gated when the agent has no
        payment wallet (payTo); the status UI is driven by payment.js. -->

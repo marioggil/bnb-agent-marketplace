@@ -519,6 +519,13 @@ header nav .user-address { color: var(--color-text); cursor: default; }
 
 .agent-profile li { margin-bottom: var(--space-1); }
 
+.evoevo-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  vertical-align: middle;
+}
+
 /* ---------------------------------------------------------------------------
  * Hire panel (agent detail)
  * ------------------------------------------------------------------------ */

@@ -492,12 +492,19 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
 
     profile = _build_agent_profile(row)
 
-    # Fetch supplementary Termix card data for Termix agents.
+    # Fetch supplementary platform card data (Termix or EvoEvo).
     termix_card: dict[str, Any] | None = None
-    if profile.get("platform") == "Termix":
+    evoevo_card: dict[str, Any] | None = None
+
+    platform_name = profile.get("platform")
+    if platform_name == "Termix":
         from app.services.client_termix import fetch_termix_card
 
         termix_card = await fetch_termix_card(token_id)
+    elif platform_name == "EvoEvo":
+        from app.services.client_evoevo import fetch_evoevo_card
+
+        evoevo_card = await fetch_evoevo_card(token_id)
 
     hires = await _hires_count([row.agent_id])
     return _render(
@@ -510,6 +517,7 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             "hires": hires,
             "profile": profile,
             "termix_card": termix_card,
+            "evoevo_card": evoevo_card,
         },
     )
 

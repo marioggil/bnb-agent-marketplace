@@ -137,6 +137,39 @@ async def test_filter_platform_termix(client, db):
     assert "Alpha" in body and "Beta" not in body
 
 
+async def test_agent_detail_evoevo_card_renders(client, db, monkeypatch):
+    """EvoEvo agents get their live card fetched and rendered."""
+    from unittest.mock import AsyncMock, patch
+
+    evo_hex = "0x" + "EvoEvo".encode().hex()
+    await _seed_one(db, 1, name="EvoBot")
+    async with db.begin():
+        from app.db.models.agent import AgentCache
+
+        row = await db.scalar(select(AgentCache).where(AgentCache.token_id == 1))
+        row.raw_metadata = {
+            "onchain": [{"key": "platform", "value": evo_hex}],
+        }
+
+    mock_card = {
+        "name": "EvoBot",
+        "description": "An EvoEvo agent",
+        "active": True,
+        "x402Support": False,
+        "services": [{"name": "web", "endpoint": "https://evoevo.ai/agent/detail?id=1"}],
+        "registrations": [{"agentId": 99, "agentRegistry": "eip155:56:0xabc"}],
+    }
+    with patch(
+        "app.services.client_evoevo.fetch_evoevo_card",
+        new_callable=AsyncMock,
+        return_value=mock_card,
+    ):
+        body = client.get("/agents/56/1").text
+    assert "EvoEvo live data" in body
+    assert "EvoBot" in body
+    assert "eip155:56:0xabc" in body
+
+
 # R5 — image fallback renders /static/img/placeholder.svg.
 async def test_image_fallback_to_placeholder(client, db):
     await _seed_one(db, 1, name="NoImage", image_url=None)
