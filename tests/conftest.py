@@ -27,6 +27,9 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-min-32-bytes-long-12345")
 _TEST_DB_PATH = os.path.join(tempfile.gettempdir(), "bnb_agent_test.sqlite3")
 os.environ.setdefault("DATABASE_URL", f"sqlite+aiosqlite:///{_TEST_DB_PATH}")
 os.environ.setdefault("8004SCAN_BASE", "https://8004scan.io/api/v1/public")
+# Disable on-chain indexer during tests — the real RPC key must not cause
+# background TCP connections in the test suite.
+os.environ.pop("ALCHEMY_API_KEY", None)
 
 # x402 (FU-2) test defaults: testnet 97, RPC never reached (offline suite),
 # facilitator "configured" with a fixed test key so pay tests pass the
@@ -279,6 +282,20 @@ def clear_settings_cache() -> None:
     _settings_cache.cache_clear()
 
 
+def reset_onchain_client() -> None:
+    """Reset the AlchemyOnchainClient singleton so httpx connections are closed."""
+    import app.services.client_bscscan as mod
+
+    if mod._onchain_client is not None and mod._onchain_client._client is not None:
+        # In a sync teardown, the async client's transport may linger.
+        # Mark it closed so __del__ won't warn about an unclosed socket.
+        try:
+            mod._onchain_client._client._transport = None  # type: ignore[union-attr]
+        except Exception:
+            pass
+    mod._onchain_client = None
+
+
 def _now() -> datetime:
     """UTC datetime for explicit created_at/updated_at in seeds.
 
@@ -291,6 +308,7 @@ def _now() -> datetime:
 @pytest.fixture
 def app():
     clear_settings_cache()
+    reset_onchain_client()
     # Modules that did `from app.db.session import AsyncSessionLocal` at
     # import time captured the lazy `__getattr__` shim, not our test
     # sessionmaker. Re-bind every router/service that uses it so their

@@ -88,7 +88,7 @@ async def get_onchain_hire_stats_by_wallet(
     min_amount: float = Query(default=0.01, description="Minimum $U amount to count"),
 ) -> dict:
     """Get on-chain hire statistics by wallet address (no agent lookup)."""
-    client = get_bscscan_client()
+    client = get_onchain_client()
     if not client.api_key:
         return {
             "wallet": wallet_address,

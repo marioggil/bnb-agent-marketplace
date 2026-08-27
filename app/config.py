@@ -189,6 +189,13 @@ class Settings(BaseSettings):
         description="Permit2 address; reserved for future rails (unused in v1).",
     )
 
+    # ---- On-chain indexer (Alchemy RPC) -----------------------------------
+    alchemy_api_key: str = Field(
+        default="",
+        alias="ALCHEMY_API_KEY",
+        description="Alchemy API key for BSC RPC. Empty disables the on-chain indexer.",
+    )
+
     @field_validator("secret_key")
     @classmethod
     def _secret_key_not_empty(cls, v: str) -> str:

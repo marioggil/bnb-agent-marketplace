@@ -6,6 +6,7 @@ app.main:app` and the tests both import `app`.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -17,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.db.session import AsyncSessionLocal, engine
 from app.errors import register_error_handlers
-from app.routers import agents, auth, favorites, healthz, hires, onchain_hires, pages, payments, sync
+from app.routers import agents, auth, favorites, healthz, hires, onchain_hires, onchain_stats, pages, payments, sync
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +27,7 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """App lifespan: warm the async engine, dispose on shutdown.
-
-    The factory does NOT run migrations on startup — that's
-    `migrations/env.py` plus `alembic upgrade head`, which the compose
-    `app` service runs in its command before uvicorn. Keeping the
-    factory free of migration side effects means the tests don't need
-    a Postgres instance just to build the app object.
-    """
+    """App lifespan: warm the async engine, start indexer, dispose on shutdown."""
     settings = get_settings()
     logger.info("app start: log_level=%s db=%s", settings.log_level, settings.database_url)
     # Touch the engine to fail fast on a bad DATABASE_URL before serving.
@@ -41,9 +35,20 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         from sqlalchemy import text
 
         await session.execute(text("SELECT 1"))
+
+    # Start on-chain indexer if Alchemy key is configured
+    indexer_task = None
+    if settings.alchemy_api_key:
+        from app.services.onchain_indexer import run_indexer_loop
+
+        indexer_task = asyncio.create_task(run_indexer_loop())
+        logger.info("On-chain indexer started")
+
     try:
         yield
     finally:
+        if indexer_task:
+            indexer_task.cancel()
         await engine.dispose()
 
 
@@ -65,6 +70,7 @@ def create_app() -> FastAPI:
     app.include_router(favorites.router)
     app.include_router(hires.router)
     app.include_router(onchain_hires.router)
+    app.include_router(onchain_stats.router)
     app.include_router(pages.router)
     app.include_router(payments.router)
     app.include_router(sync.router)

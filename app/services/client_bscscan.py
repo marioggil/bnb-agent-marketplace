@@ -39,6 +39,19 @@ class AlchemyOnchainClient:
         self.rpc_url = f"{ALCHEMY_RPC_BASE}/{self.api_key}" if self.api_key else ""
         # Rate limit: 10 requests/second for free tier
         self._semaphore = asyncio.Semaphore(10)
+        self._client: httpx.AsyncClient | None = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create a persistent httpx client (reuses connections)."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=10.0)
+        return self._client
+
+    async def close(self) -> None:
+        """Close the persistent httpx client."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     async def _rpc_call(
         self, method: str, params: list[Any], timeout: float = 10.0
@@ -57,19 +70,19 @@ class AlchemyOnchainClient:
 
         async with self._semaphore:
             try:
-                async with httpx.AsyncClient(timeout=timeout) as client:
-                    resp = await client.post(self.rpc_url, json=payload)
-                    resp.raise_for_status()
-                    data = resp.json()
+                client = await self._get_client()
+                resp = await client.post(self.rpc_url, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
 
-                    if "result" in data:
-                        return data
-                    elif "error" in data:
-                        logger.warning(
-                            "Alchemy RPC error: %s", data["error"].get("message", "unknown")
-                        )
-                        return data
-                    return None
+                if "result" in data:
+                    return data
+                elif "error" in data:
+                    logger.warning(
+                        "Alchemy RPC error: %s", data["error"].get("message", "unknown")
+                    )
+                    return data
+                return None
             except httpx.HTTPError as e:
                 logger.error("Alchemy HTTP error: %s", e)
                 return None

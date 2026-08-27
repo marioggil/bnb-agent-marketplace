@@ -3,6 +3,12 @@ from app.db.models.agent import AgentCache, BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY
 from app.db.models.auth_nonce import AuthNonce, NONCE_TTL_SECONDS
 from app.db.models.favorite import Favorite
 from app.db.models.hired_agent import HiredAgent, HiredStatus, HIRED_STATUS_ENUM_NAME
+from app.db.models.onchain_index import (
+    OnchainAgentEvent,
+    OnchainTransfer,
+    TRANSFER_TYPE_ENUM_NAME,
+    TransferType,
+)
 from app.db.models.sync_state import FAILED_TOKEN_IDS_CAP, SyncState
 from app.db.models.user import User
 
@@ -17,6 +23,10 @@ __all__ = [
     "HIRED_STATUS_ENUM_NAME",
     "HiredStatus",
     "NONCE_TTL_SECONDS",
+    "OnchainAgentEvent",
+    "OnchainTransfer",
     "SyncState",
+    "TRANSFER_TYPE_ENUM_NAME",
+    "TransferType",
     "User",
 ]

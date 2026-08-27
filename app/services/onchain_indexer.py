@@ -1,0 +1,334 @@
+"""On-chain indexer worker — scans BSC and populates the onchain_transfers table.
+
+Runs as a background task during the FastAPI lifespan. Scans $U (ERC-20)
+transfers and agent NFT (ERC-721) events, links them to known agents,
+and stores everything in the database for fast local queries.
+
+Usage:
+    The worker is started automatically by the FastAPI lifespan in main.py.
+    It can also be run standalone: python -m app.services.onchain_indexer
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+from datetime import datetime, timezone
+from decimal import Decimal
+from typing import Any
+
+import httpx
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from app.config import get_settings
+from app.db.session import get_sessionmaker
+
+logger = logging.getLogger(__name__)
+
+# Contract addresses
+U_TOKEN_MAINNET = "0xcE24439F2D9C6a2289F741120FE202248B666666"
+U_TOKEN_TESTNET = "0xc70B8741B8B07A6d61E54fd4B20f22Fa648E5565"
+IDENTITY_REGISTRY = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+
+# ERC-20 Transfer topic (same signature as ERC-721)
+TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+
+# Alchemy free tier: 10 blocks per request
+BLOCK_RANGE = 10
+
+# How often to run the indexer (seconds)
+INDEX_INTERVAL = 30
+
+# How many blocks to index per cycle (300 = ~15 minutes of blocks)
+BLOCKS_PER_CYCLE = 300
+
+
+def _extract_addr(topic: str | bytes) -> str:
+    """Extract a 20-byte address from a padded 32-byte topic."""
+    if isinstance(topic, bytes):
+        return "0x" + topic.hex()[-40:]
+    return "0x" + topic[-40:]
+
+
+def _extract_token_id(topic: str | bytes) -> int:
+    """Extract a token ID from a 32-byte topic."""
+    if isinstance(topic, bytes):
+        return int.from_bytes(topic, "big")
+    return int(topic, 16)
+
+
+class OnchainIndexer:
+    """Scans BSC for $U transfers and agent NFT events."""
+
+    def __init__(self, rpc_url: str):
+        self.rpc_url = rpc_url
+        self._client: httpx.AsyncClient | None = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create a persistent httpx client."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=10.0)
+        return self._client
+
+    async def close(self) -> None:
+        """Close the httpx client."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
+
+    async def _rpc_call(
+        self, method: str, params: list[Any], timeout: float = 10.0
+    ) -> dict[str, Any] | None:
+        """Rate-limited RPC call."""
+        payload = {"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
+        try:
+            client = await self._get_client()
+            resp = await client.post(self.rpc_url, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            if "result" in data:
+                return data
+            if "error" in data:
+                logger.warning("RPC error: %s", data["error"].get("message"))
+            return None
+        except httpx.HTTPError as e:
+            logger.error("RPC HTTP error: %s", e)
+            return None
+
+    async def get_current_block(self) -> int | None:
+        """Get the latest block number."""
+        data = await self._rpc_call("eth_blockNumber", [])
+        if data and "result" in data:
+            return int(data["result"], 16)
+        return None
+
+    async def get_block_timestamp(self, block_number: int) -> datetime | None:
+        """Get the timestamp for a block number."""
+        data = await self._rpc_call(
+            "eth_getBlockByNumber", [hex(block_number), False]
+        )
+        if data and "result" in data and data["result"]:
+            ts = int(data["result"]["timestamp"], 16)
+            return datetime.fromtimestamp(ts, tz=timezone.utc)
+        return None
+
+    async def get_logs(
+        self,
+        from_block: int,
+        to_block: int,
+        address: str,
+        topics: list[str | None],
+    ) -> list[dict[str, Any]]:
+        """Get event logs in a block range (max 10 blocks)."""
+        # Clamp to Alchemy free tier limit
+        if to_block - from_block > 9:
+            to_block = from_block + 9
+
+        data = await self._rpc_call(
+            "eth_getLogs",
+            [{"address": address, "topics": topics, "fromBlock": hex(from_block), "toBlock": hex(to_block)}],
+        )
+        if data and "result" in data and isinstance(data["result"], list):
+            return data["result"]
+        return []
+
+    async def scan_u_transfers(
+        self, from_block: int, to_block: int, token_address: str = U_TOKEN_MAINNET
+    ) -> list[dict[str, Any]]:
+        """Scan $U ERC-20 transfers in a block range."""
+        all_logs = []
+        current = from_block
+        while current <= to_block:
+            batch_end = min(current + 9, to_block)
+            logs = await self.get_logs(
+                current, batch_end, token_address, [TRANSFER_TOPIC, None, None]
+            )
+            all_logs.extend(logs)
+            current = batch_end + 1
+            await asyncio.sleep(0.05)
+        return all_logs
+
+    async def scan_agent_nft_events(
+        self, from_block: int, to_block: int
+    ) -> list[dict[str, Any]]:
+        """Scan agent NFT (ERC-721) Transfer events on the IdentityRegistry."""
+        all_logs = []
+        current = from_block
+        while current <= to_block:
+            batch_end = min(current + 9, to_block)
+            logs = await self.get_logs(
+                current, batch_end, IDENTITY_REGISTRY, [TRANSFER_TOPIC, None, None, None]
+            )
+            all_logs.extend(logs)
+            current = batch_end + 1
+            await asyncio.sleep(0.05)
+        return all_logs
+
+
+async def _resolve_agent_wallets(session) -> dict[str, str]:
+    """Build a mapping: lowercase wallet_address -> agent_id."""
+    from app.db.models.agent import AgentCache
+
+    result = await session.execute(
+        select(AgentCache.agent_wallet, AgentCache.agent_id).where(
+            AgentCache.agent_wallet.isnot(None)
+        )
+    )
+    return {row[0].lower(): row[1] for row in result.all()}
+
+
+async def _index_cycle(rpc_url: str) -> None:
+    """Run one indexing cycle: scan recent blocks and store new transfers."""
+    from app.db.models.onchain_index import OnchainTransfer, OnchainAgentEvent
+
+    settings = get_settings()
+    db_url = settings.database_url
+
+    # Skip if no Alchemy key
+    if not rpc_url or "ALCHEMY_API_KEY" in rpc_url:
+        logger.debug("No Alchemy RPC URL configured, skipping indexer cycle")
+        return
+
+    indexer = OnchainIndexer(rpc_url)
+    try:
+        current_block = await indexer.get_current_block()
+        if current_block is None:
+            logger.warning("Could not get current block, skipping indexer cycle")
+            return
+
+        # Read last indexed block from DB
+        session_factory = get_sessionmaker()
+        async with session_factory() as session:
+            from sqlalchemy import text
+
+            result = await session.execute(
+                text("SELECT COALESCE(MAX(block_number), 0) FROM onchain_transfers")
+            )
+            last_block = result.scalar()
+
+            # If first run, start from a reasonable point (last 24h ~ 86400 blocks / 3s = ~28800)
+            if last_block == 0:
+                last_block = current_block - 28800
+
+            from_block = last_block + 1
+            to_block = min(current_block, from_block + BLOCKS_PER_CYCLE - 1)
+
+            if from_block > current_block:
+                logger.debug("Already up to date (last=%d, current=%d)", last_block, current_block)
+                return
+
+            logger.info("Indexing blocks %d → %d", from_block, to_block)
+
+            # Resolve agent wallets
+            wallet_to_agent = await _resolve_agent_wallets(session)
+
+            # ---- Scan $U ERC-20 transfers ----
+            u_token = U_TOKEN_MAINNET if settings.x402_chain_id == 56 else U_TOKEN_TESTNET
+            u_logs = await indexer.scan_u_transfers(from_block, to_block, u_token)
+
+            transfers_inserted = 0
+            for log in u_logs:
+                from_addr = _extract_addr(log["topics"][1])
+                to_addr = _extract_addr(log["topics"][2])
+                value = Decimal(int(log["data"], 16)) / Decimal(10**18)
+                block_num = int(log["blockNumber"], 16)
+                tx = log["transactionHash"]
+
+                # Get timestamp
+                ts = await indexer.get_block_timestamp(block_num)
+                if ts is None:
+                    ts = datetime.now(timezone.utc)
+
+                # Link to agent
+                linked_agent = wallet_to_agent.get(to_addr.lower())
+
+                # Upsert
+                stmt = pg_insert(OnchainTransfer).values(
+                    from_address=from_addr,
+                    to_address=to_addr,
+                    value=value,
+                    block_number=block_num,
+                    timestamp=ts,
+                    tx_hash=tx,
+                    transfer_type="erc20_u",
+                    linked_agent_id=linked_agent,
+                )
+                stmt = stmt.on_conflict_do_nothing()
+                await session.execute(stmt)
+                transfers_inserted += 1
+
+            # ---- Scan agent NFT events ----
+            nft_logs = await indexer.scan_agent_nft_events(from_block, to_block)
+
+            events_inserted = 0
+            for log in nft_logs:
+                from_addr = _extract_addr(log["topics"][1])
+                to_addr = _extract_addr(log["topics"][2])
+                token_id = _extract_token_id(log["topics"][3])
+                block_num = int(log["blockNumber"], 16)
+                tx = log["transactionHash"]
+
+                ts = await indexer.get_block_timestamp(block_num)
+                if ts is None:
+                    ts = datetime.now(timezone.utc)
+
+                # Determine event type
+                event_type = "mint" if from_addr == "0x" + "0" * 40 else "transfer"
+
+                # Build agent_id
+                from app.db.models.agent import BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id
+
+                agent_id = build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id)
+
+                stmt = pg_insert(OnchainAgentEvent).values(
+                    agent_id=agent_id,
+                    token_id=token_id,
+                    event_type=event_type,
+                    from_address=from_addr,
+                    to_address=to_addr,
+                    block_number=block_num,
+                    timestamp=ts,
+                    tx_hash=tx,
+                )
+                stmt = stmt.on_conflict_do_nothing()
+                await session.execute(stmt)
+                events_inserted += 1
+
+            await session.commit()
+
+            logger.info(
+                "Indexed %d $U transfers + %d NFT events (blocks %d-%d)",
+                transfers_inserted,
+                events_inserted,
+                from_block,
+                to_block,
+            )
+    finally:
+        await indexer.close()
+
+
+async def run_indexer_loop() -> None:
+    """Background loop that runs the indexer every INDEX_INTERVAL seconds."""
+    settings = get_settings()
+
+    # Build RPC URL from Alchemy key
+    alchemy_key = getattr(settings, "alchemy_api_key", "")
+    if not alchemy_key:
+        logger.info("On-chain indexer disabled: no ALCHEMY_API_KEY configured")
+        return
+
+    rpc_url = f"https://bnb-mainnet.g.alchemy.com/v2/{alchemy_key}"
+    logger.info("On-chain indexer started (interval=%ds, blocks/cycle=%d)", INDEX_INTERVAL, BLOCKS_PER_CYCLE)
+
+    while True:
+        try:
+            await _index_cycle(rpc_url)
+        except Exception:
+            logger.exception("Indexer cycle failed")
+        await asyncio.sleep(INDEX_INTERVAL)
+
+
+# ---- Standalone entry point ----
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(run_indexer_loop())
