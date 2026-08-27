@@ -393,13 +393,18 @@ async def home(
     x402: bool | None = None,
     sort: str = "average_score",
     owner: str | None = None,
-    hireable: bool | None = None,
+    hireable: str | None = None,
     health: str | None = None,
     platform: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=24, ge=1, le=100),
 ) -> HTMLResponse:
     """Home: full page on first paint, partials on HTMX load-more."""
+    hireable_bool: bool | None = None
+    if hireable == "true":
+        hireable_bool = True
+    elif hireable == "false":
+        hireable_bool = False
     items, total = await _list_agents_page(
         page,
         page_size,
@@ -408,7 +413,7 @@ async def home(
         x402=x402,
         sort=sort,
         owner=owner,
-        hireable=hireable,
+        hireable=hireable_bool,
         health=health,
         platform=platform,
     )
