@@ -247,18 +247,19 @@ def _platform_expression(platform: str, dialect: str = "postgresql") -> Any:
     is `other`. Postgres uses the exact jsonb path query; the sqlite
     fallback (test harness only) matches the hex substring.
     """
-    from sqlalchemy import func, or_
+    from sqlalchemy import String, cast, func, or_
 
     termix = _json_text(AgentCache.raw_metadata, ["offchain_content", "termix"], dialect).is_not(
         None
     )
     if dialect == "postgresql":
-        evo = (
-            func.jsonb_path_query_first(
-                AgentCache.raw_metadata, '$.onchain[*] ? (@.key == "platform")'
-            ).astext
-            == _EVOEVO_PLATFORM_HEX
+        # jsonb_path_query_first returns jsonb; cast to text so we can
+        # compare with the hex string.  .astext only works on column
+        # accessors (column["key"]), not on generic func() results.
+        evo_raw = func.jsonb_path_query_first(
+            AgentCache.raw_metadata, '$.onchain[*] ? (@.key == "platform")'
         )
+        evo = cast(evo_raw, String) == _EVOEVO_PLATFORM_HEX
     else:
         # sqlite test harness: no jsonb_path_query_first; approximate match.
         evo = _json_text(AgentCache.raw_metadata, ["onchain"], dialect).like(
