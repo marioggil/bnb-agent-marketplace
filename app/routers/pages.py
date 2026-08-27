@@ -390,7 +390,7 @@ async def home(
     request: Request,
     q: str | None = None,
     category: str | None = None,
-    x402: bool | None = None,
+    x402: str | None = None,
     sort: str = "average_score",
     owner: str | None = None,
     hireable: str | None = None,
@@ -400,6 +400,11 @@ async def home(
     page_size: int = Query(default=24, ge=1, le=100),
 ) -> HTMLResponse:
     """Home: full page on first paint, partials on HTMX load-more."""
+    x402_bool: bool | None = None
+    if x402 == "true":
+        x402_bool = True
+    elif x402 == "false":
+        x402_bool = False
     hireable_bool: bool | None = None
     if hireable == "true":
         hireable_bool = True
@@ -410,7 +415,7 @@ async def home(
         page_size,
         q=q,
         category=category,
-        x402=x402,
+        x402=x402_bool,
         sort=sort,
         owner=owner,
         hireable=hireable_bool,
