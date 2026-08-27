@@ -107,6 +107,51 @@
     </dl>
   </section>
 
+  <!-- Termix enrichment: live data from the Termix Agent Card API -->
+  {% if termix_card %}
+  <section class="agent-profile termix-card">
+    <h2>Termix live data</h2>
+    <dl>
+      {% if termix_card.get('card', {}).get('profile', {}).get('displayName') %}
+        <dt>Display name</dt><dd>{{ termix_card.card.profile.displayName }}</dd>
+      {% endif %}
+      <dt>Status</dt>
+      <dd>
+        <span class="badge {% if termix_card.status == 'BOUND' %}verified{% else %}category{% endif %}">
+          {{ termix_card.status or 'unknown' }}
+        </span>
+      </dd>
+      <dt>Presence</dt>
+      <dd>
+        <span class="badge {% if termix_card.presence == 'online' %}verified{% else %}category{% endif %}">
+          {{ termix_card.presence or 'unknown' }}
+        </span>
+      </dd>
+      {% if termix_card.get('endpoint') %}
+        <dt>Endpoint</dt><dd><code>{{ termix_card.endpoint }}</code></dd>
+      {% endif %}
+      {% if termix_card.get('tags') %}
+        <dt>Termix tags</dt>
+        <dd class="tag-list">
+          {% for t in termix_card.tags %}<span class="badge category">{{ t }}</span>{% endfor %}
+        </dd>
+      {% endif %}
+      {% if termix_card.get('skills') %}
+        <dt>Skills</dt>
+        <dd class="tag-list">
+          {% for s in termix_card.skills %}<span class="badge category">{{ s }}</span>{% endfor %}
+        </dd>
+      {% endif %}
+      {% if termix_card.get('roles') %}
+        <dt>Roles</dt><dd>{{ termix_card.roles | join(', ') }}</dd>
+      {% endif %}
+      {% if termix_card.get('updatedAt') %}
+        <dt>Last seen</dt><dd>{{ termix_card.updatedAt }}</dd>
+      {% endif %}
+    </dl>
+  </section>
+  {% endif %}
+
   <!-- x402 hire panel (FU-2, spec web-pages-x402 W1/W3/W4). The CTA is priced
        at X402_DEFAULT_PRICE_USD ($1.00) and gated when the agent has no
        payment wallet (payTo); the status UI is driven by payment.js. -->

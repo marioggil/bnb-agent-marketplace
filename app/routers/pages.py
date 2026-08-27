@@ -489,6 +489,16 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
         )
     if row is None:
         raise NotFound(f"agent {chain_id}:{token_id} not cached")
+
+    profile = _build_agent_profile(row)
+
+    # Fetch supplementary Termix card data for Termix agents.
+    termix_card: dict[str, Any] | None = None
+    if profile.get("platform") == "Termix":
+        from app.services.client_termix import fetch_termix_card
+
+        termix_card = await fetch_termix_card(token_id)
+
     hires = await _hires_count([row.agent_id])
     return _render(
         request,
@@ -498,7 +508,8 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             "pay_to": row.agent_wallet,
             "hire_price_usd": get_settings().x402_default_price_usd,
             "hires": hires,
-            "profile": _build_agent_profile(row),
+            "profile": profile,
+            "termix_card": termix_card,
         },
     )
 
