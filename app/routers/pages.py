@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 
@@ -138,32 +138,52 @@ async def _list_agents_page(
     x402: bool | None = None,
     sort: str = "average_score",
     owner: str | None = None,
+    hireable: bool | None = None,
+    health: str | None = None,
+    platform: str | None = None,
 ) -> tuple[list[AgentCache], int]:
     """Run the same query as `routers.agents.list_agents` for template rendering."""
-    from sqlalchemy import func, or_, select
-
-    sort_key = {
-        "average_score": AgentCache.average_score.desc().nullslast(),
-        "total_feedbacks": AgentCache.total_feedbacks.desc(),
-        "created_at": AgentCache.created_at.desc(),
-        "name": AgentCache.name.asc().nullslast(),
-    }.get(sort, AgentCache.average_score.desc().nullslast())
-
-    base = select(AgentCache)
-    if q:
-        like = f"%{q}%"
-        base = base.where(or_(AgentCache.name.ilike(like), AgentCache.description.ilike(like)))
-    if category:
-        base = base.where(AgentCache.category == category)
-    if owner:
-        base = base.where(AgentCache.owner_address == owner)
-    if x402 is not None:
-        base = base.where(AgentCache.x402_supported.is_(x402))
-
-    total_q = select(func.count()).select_from(base.subquery())
-    list_q = base.order_by(sort_key).offset((page - 1) * page_size).limit(page_size)
+    from sqlalchemy import ColumnElement, func, or_, select
 
     async with AsyncSessionLocal() as session:
+        dialect = session.bind.dialect.name if session.bind is not None else "postgresql"
+
+        _sort_map: dict[str, ColumnElement[Any]] = {
+            "average_score": AgentCache.average_score.desc().nullslast(),
+            "total_feedbacks": AgentCache.total_feedbacks.desc(),
+            "created_at": AgentCache.created_at.desc(),
+            "name": AgentCache.name.asc().nullslast(),
+            "metadata_completeness": AgentCache.metadata_completeness_score.desc().nullslast(),
+            "health_score": AgentCache.health_score.desc().nullslast(),
+        }
+        sort_key = _sort_map.get(sort, AgentCache.average_score.desc().nullslast())
+
+        base = select(AgentCache)
+        if q:
+            like = f"%{q}%"
+            base = base.where(or_(AgentCache.name.ilike(like), AgentCache.description.ilike(like)))
+        if category:
+            base = base.where(AgentCache.category == category)
+        if owner:
+            base = base.where(AgentCache.owner_address == owner)
+        if x402 is not None:
+            base = base.where(AgentCache.x402_supported.is_(x402))
+        if hireable is not None:
+            # The product's hire signal is the x402 payment flag (category study §8).
+            base = base.where(AgentCache.x402_supported.is_(hireable))
+        if health:
+            # overall_status lives inside the health_status JSONB map.
+            status = _json_text(AgentCache.health_status, ["overall_status"], dialect)
+            if health == "not_measured":
+                base = base.where(status.is_(None))
+            else:
+                base = base.where(status == health)
+        if platform:
+            base = base.where(_platform_expression(platform, dialect))
+
+        total_q = select(func.count()).select_from(base.subquery())
+        list_q = base.order_by(sort_key).offset((page - 1) * page_size).limit(page_size)
+
         total = int(await session.scalar(total_q) or 0)
         rows = (await session.scalars(list_q)).all()
     return list(rows), total
@@ -197,6 +217,54 @@ async def _hires_count(agent_ids: list[str]) -> dict[str, int]:
 # ---------------------------------------------------------------------------
 # Agent profile (detail page technical sheet) — category study §8
 # ---------------------------------------------------------------------------
+
+
+#: Hex-encoded `platform` value stored by the upstream for EvoEvo agents.
+_EVOEVO_PLATFORM_HEX: str = "0x" + "EvoEvo".encode().hex()
+
+
+def _json_text(column: Any, keys: list[str], dialect: str) -> Any:
+    """Text-valued JSON path expression, portable across dialects.
+
+    Postgres JSONB needs `->>` (astext) to yield text; the sqlite test
+    harness uses `json_extract`, which returns text directly.
+    """
+    from sqlalchemy import func
+
+    if dialect == "postgresql":
+        expr = column
+        for key in keys:
+            expr = expr[key]
+        return expr.astext
+    return func.json_extract(column, "$." + ".".join(keys))
+
+
+def _platform_expression(platform: str, dialect: str = "postgresql") -> Any:
+    """SQL expression for the origin-platform filter (category study §8).
+
+    EvoEvo agents carry `onchain[].key == "platform"` with the hex-encoded
+    value; Termix agents carry `offchain_content.termix`; everything else
+    is `other`. Postgres uses the exact jsonb path query; the sqlite
+    fallback (test harness only) matches the hex substring.
+    """
+    from sqlalchemy import func, or_
+
+    termix = _json_text(AgentCache.raw_metadata, ["offchain_content", "termix"], dialect).is_not(
+        None
+    )
+    if dialect == "postgresql":
+        evo = (
+            func.jsonb_path_query_first(
+                AgentCache.raw_metadata, '$.onchain[*] ? (@.key == "platform")'
+            ).astext
+            == _EVOEVO_PLATFORM_HEX
+        )
+    else:
+        # sqlite test harness: no jsonb_path_query_first; approximate match.
+        evo = _json_text(AgentCache.raw_metadata, ["onchain"], dialect).like(
+            f"%{_EVOEVO_PLATFORM_HEX}%"
+        )
+    return {"evoevo": evo, "termix": termix, "other": ~or_(evo, termix)}.get(platform, or_(False))
 
 
 def _hex_to_text(value: str | None) -> str | None:
@@ -317,12 +385,24 @@ async def home(
     x402: bool | None = None,
     sort: str = "average_score",
     owner: str | None = None,
+    hireable: bool | None = None,
+    health: str | None = None,
+    platform: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=24, ge=1, le=100),
 ) -> HTMLResponse:
     """Home: full page on first paint, partials on HTMX load-more."""
     items, total = await _list_agents_page(
-        page, page_size, q=q, category=category, x402=x402, sort=sort, owner=owner
+        page,
+        page_size,
+        q=q,
+        category=category,
+        x402=x402,
+        sort=sort,
+        owner=owner,
+        hireable=hireable,
+        health=health,
+        platform=platform,
     )
     total_pages = (total + page_size - 1) // page_size if total else 0
     hire_price_usd = get_settings().x402_default_price_usd
@@ -342,6 +422,9 @@ async def home(
                 "category": category,
                 "x402": x402,
                 "owner": owner,
+                "hireable": hireable,
+                "health": health,
+                "platform": platform,
                 "has_more": page < total_pages,
                 "hires": hires,
                 "hire_price_usd": hire_price_usd,
@@ -361,6 +444,9 @@ async def home(
             "category": category,
             "x402": x402,
             "owner": owner,
+            "hireable": hireable,
+            "health": health,
+            "platform": platform,
             "has_more": page < total_pages,
             "hires": hires,
             "hire_price_usd": hire_price_usd,
@@ -368,8 +454,8 @@ async def home(
     )
 
 
-@router.get("/agents/{chain_id}/{token_id}", response_class=HTMLResponse)
-async def agent_detail(request: Request, chain_id: int, token_id: int) -> HTMLResponse:
+@router.get("/agents/{chain_id}/{token_id}")
+async def agent_detail(request: Request, chain_id: int, token_id: int) -> Response:
     """Single-agent detail page (spec #22 + web-pages-x402 W1).
 
     FU-2: the hire CTA needs the agent's `pay_to` (payment wallet) and the
@@ -402,7 +488,6 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> HTMLRe
 @router.get("/favorites", response_class=HTMLResponse)
 async def favorites(request: Request) -> HTMLResponse:
     """Auth-gated favorites page. Redirects to /auth for anonymous callers (spec S6)."""
-    from fastapi.responses import RedirectResponse
 
     from app.services.auth import SESSION_COOKIE_NAME, _read_session
 
@@ -413,11 +498,11 @@ async def favorites(request: Request) -> HTMLResponse:
     if not has_session:
         if request.headers.get("HX-Request", "").lower() == "true":
             return HTMLResponse(status_code=200, headers={"HX-Redirect": "/auth"})
-        return RedirectResponse(url="/auth", status_code=302)
+        return RedirectResponse(url="/auth", status_code=302)  # type: ignore[return-value]
     try:
         user = await get_current_user(request)
     except AuthRequired:
-        return RedirectResponse(url="/auth", status_code=302)
+        return RedirectResponse(url="/auth", status_code=302)  # type: ignore[return-value]
     from sqlalchemy import select
 
     async with AsyncSessionLocal() as session:

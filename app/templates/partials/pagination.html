@@ -2,7 +2,7 @@
    for HTMX (spec web-pages R4, S1, S3, S4). The `owner` filter is carried
    through so creator links paginate correctly. The `.loading` spinner is
    the hx-indicator: hidden until htmx-request lands on it. #}
-{% set _qs = 'q=' ~ (q or '') ~ '&category=' ~ (category or '') ~ '&x402=' ~ ('true' if x402 else '') ~ '&sort=' ~ sort ~ '&owner=' ~ (owner or '') %}
+{% set _qs = 'q=' ~ (q or '') ~ '&category=' ~ (category or '') ~ '&x402=' ~ ('true' if x402 else '') ~ '&sort=' ~ sort ~ '&owner=' ~ (owner or '') ~ '&hireable=' ~ (hireable if hireable is not none else '') ~ '&health=' ~ (health or '') ~ '&platform=' ~ (platform or '') %}
 <nav class="pagination" aria-label="pagination">
   {% if page > 1 %}
     <a href="/?{{ _qs }}&page={{ page - 1 }}&page_size={{ page_size }}">Prev</a>

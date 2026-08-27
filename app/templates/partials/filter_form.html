@@ -11,11 +11,28 @@
       <option value="{{ c }}" {% if c == category %}selected{% endif %}>{{ c | category_label }}</option>
     {% endfor %}
   </select>
+  <select name="platform" aria-label="Platform">
+    <option value="">All platforms</option>
+    {% for p in ['evoevo', 'termix', 'other'] %}
+      <option value="{{ p }}" {% if p == platform %}selected{% endif %}>{{ p | capitalize }}</option>
+    {% endfor %}
+  </select>
+  <select name="hireable" aria-label="Payment">
+    <option value="">All payments</option>
+    <option value="true" {% if hireable == 'true' or hireable is sameas true %}selected{% endif %}>Hireable (x402)</option>
+    <option value="false" {% if hireable == 'false' or hireable is sameas false %}selected{% endif %}>Not hireable</option>
+  </select>
+  <select name="health" aria-label="Endpoint health">
+    <option value="">All health</option>
+    {% for h in ['degraded', 'unhealthy', 'unknown', 'not_measured'] %}
+      <option value="{{ h }}" {% if h == health %}selected{% endif %}>{{ h | replace('_', ' ') | capitalize }}</option>
+    {% endfor %}
+  </select>
   <label class="check"><input type="checkbox" name="x402" value="true"
          title="Payable via x402 — pay per request" {% if x402 %}checked{% endif %} /> x402 only</label>
   <select name="sort" aria-label="Sort">
-    {% set _sort_labels = {'average_score': 'Top rated', 'total_feedbacks': 'Most rated', 'created_at': 'Newest', 'name': 'Name'} %}
-    {% for s in ['average_score', 'total_feedbacks', 'created_at', 'name'] %}
+    {% set _sort_labels = {'average_score': 'Top rated', 'total_feedbacks': 'Most rated', 'created_at': 'Newest', 'name': 'Name', 'metadata_completeness': 'Metadata completeness', 'health_score': 'Endpoint health'} %}
+    {% for s in ['average_score', 'total_feedbacks', 'created_at', 'name', 'metadata_completeness', 'health_score'] %}
       <option value="{{ s }}" {% if s == sort %}selected{% endif %}>{{ _sort_labels.get(s, s) }}</option>
     {% endfor %}
   </select>

@@ -2,33 +2,53 @@
 
 Spec: `sdd/marketplace-scaffold-tests/spec` pages-tests R1, R2, R5, R6.
 """
+
 from __future__ import annotations
 
-from tests.conftest import _now
+from sqlalchemy import select
 
 from app.db.models.agent import (
-    AgentCache, BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id,
+    BSC_CHAIN_ID,
+    BSC_IDENTITY_REGISTRY,
+    AgentCache,
+    build_agent_id,
 )
+from tests.conftest import _now
 
 
-async def _seed_one(session, token_id: int = 1, name: str = "Alpha",
-                    image_url: str | None = None,
-                    owner_address: str | None = None) -> str:
+async def _seed_one(
+    session,
+    token_id: int = 1,
+    name: str = "Alpha",
+    image_url: str | None = None,
+    owner_address: str | None = None,
+) -> str:
     aid = build_agent_id(56, BSC_IDENTITY_REGISTRY, token_id)
-    session.add(AgentCache(
-        agent_id=aid, chain_id=BSC_CHAIN_ID, token_id=token_id,
-        registry_address=BSC_IDENTITY_REGISTRY, name=name, image_url=image_url,
-        owner_address=owner_address,
-        supported_protocols=[], cross_chain_versions=[], raw={}, created_at=_now(), updated_at=_now(),
-        tags=[], categories=[],
-    ))
+    session.add(
+        AgentCache(
+            agent_id=aid,
+            chain_id=BSC_CHAIN_ID,
+            token_id=token_id,
+            registry_address=BSC_IDENTITY_REGISTRY,
+            name=name,
+            image_url=image_url,
+            owner_address=owner_address,
+            supported_protocols=[],
+            cross_chain_versions=[],
+            raw={},
+            created_at=_now(),
+            updated_at=_now(),
+            tags=[],
+            categories=[],
+        )
+    )
     await session.commit()
     return aid
 
 
 # R1 — full HTML render.
 async def test_home_full_html_renders_cards(client, db):
-    aid = await _seed_one(db, 1, name="Alpha")
+    await _seed_one(db, 1, name="Alpha")
     body = client.get("/").text
     assert "<html" in body and "Alpha" in body
 
@@ -45,8 +65,8 @@ async def test_home_renders_hero_and_owner_filter(client, db):
 
 
 async def test_agent_detail_renders_hire_panel(client, db):
-    aid = await _seed_one(db, 1, name="Alpha")
-    body = client.get(f"/agents/56/1").text
+    await _seed_one(db, 1, name="Alpha")
+    body = client.get("/agents/56/1").text
     assert 'id="hire-cta"' in body
     assert 'id="hire-status"' in body
 
@@ -56,6 +76,65 @@ async def test_home_htmx_returns_partial(client, db):
     await _seed_one(db, 1, name="Alpha")
     body = client.get("/", headers={"HX-Request": "true"}).text
     assert "<html" not in body and "Alpha" in body
+
+
+# Filters (category study §8): hireable, platform, health + sort keys.
+async def test_filter_hireable(client, db):
+    await _seed_one(db, 1, name="Alpha", owner_address="0x" + "ab" * 20)
+    await _seed_one(db, 2, name="Beta", owner_address="0x" + "ab" * 20)
+    async with db.begin():
+        from app.db.models.agent import AgentCache
+
+        for row in (await db.execute(select(AgentCache))).scalars():
+            row.x402_supported = row.token_id == 1
+    body = client.get("/?hireable=true").text
+    assert "Alpha" in body and "Beta" not in body
+    body = client.get("/?hireable=false").text
+    assert "Beta" in body and "Alpha" not in body
+
+
+async def test_sort_metadata_completeness(client, db):
+    await _seed_one(db, 1, name="Alpha", owner_address="0x" + "ab" * 20)
+    await _seed_one(db, 2, name="Beta", owner_address="0x" + "ab" * 20)
+    async with db.begin():
+        from app.db.models.agent import AgentCache
+
+        for row in (await db.execute(select(AgentCache))).scalars():
+            row.metadata_completeness_score = 10 if row.token_id == 1 else 90
+    body = client.get("/?sort=metadata_completeness").text
+    assert body.index("Beta") < body.index("Alpha")
+
+
+async def test_filter_health(client, db):
+    await _seed_one(db, 1, name="Alpha", owner_address="0x" + "ab" * 20)
+    await _seed_one(db, 2, name="Beta", owner_address="0x" + "ab" * 20)
+    async with db.begin():
+        from app.db.models.agent import AgentCache
+
+        for row in (await db.execute(select(AgentCache))).scalars():
+            row.health_status = {"overall_status": "degraded"} if row.token_id == 1 else None
+    body = client.get("/?health=degraded").text
+    assert "Alpha" in body and "Beta" not in body
+
+
+async def test_filter_platform_termix(client, db):
+    await _seed_one(db, 1, name="Alpha", owner_address="0x" + "ab" * 20)
+    await _seed_one(db, 2, name="Beta", owner_address="0x" + "ab" * 20)
+    async with db.begin():
+        from app.db.models.agent import AgentCache
+
+        for row in (await db.execute(select(AgentCache))).scalars():
+            row.raw_metadata = (
+                {
+                    "offchain_content": {
+                        "termix": {"profile": {"category": "Code & Smart Contracts"}}
+                    }
+                }
+                if row.token_id == 1
+                else {}
+            )
+    body = client.get("/?platform=termix").text
+    assert "Alpha" in body and "Beta" not in body
 
 
 # R5 — image fallback renders /static/img/placeholder.svg.
