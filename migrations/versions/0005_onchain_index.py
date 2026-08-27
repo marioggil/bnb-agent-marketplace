@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 
 revision = "0005"
-down_revision = "0004"
+down_revision = "0004_hired_payment_cols"
 branch_labels = None
 depends_on = None
 
