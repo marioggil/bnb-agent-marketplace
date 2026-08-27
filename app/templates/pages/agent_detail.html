@@ -28,7 +28,22 @@
     {% if agent.total_feedbacks > 0 %}
       <dt>Rating</dt><dd>&#9733; {{ agent.star_count }} &middot; {{ agent.total_feedbacks }} ratings</dd>
     {% endif %}
-    <dt>Hires</dt><dd>Hired by {{ hires.get(agent.agent_id) or 0 }} users</dd>
+    <dt>Hires</dt>
+    <dd>
+      <span class="hire-count-platform">{{ hires.get(agent.agent_id) or 0 }} users</span>
+      <span class="text-muted">(platform)</span>
+      {% if agent.agent_wallet %}
+        <button type="button" class="btn btn-sm btn-outline onchain-verify-btn"
+                data-chain-id="{{ agent.agent_id.split(':')[0] }}"
+                data-token-id="{{ agent.agent_id.split(':')[-1] }}"
+                onclick="verifyOnchainHires(this)">
+          Verify on-chain
+        </button>
+        <span class="onchain-hire-result" style="display:none">
+          <span class="onchain-count">0</span> users <span class="text-muted">(on-chain)</span>
+        </span>
+      {% endif %}
+    </dd>
     <dt>Protocols</dt><dd>{{ agent.supported_protocols | join(', ') or '—' }}</dd>
   </dl>
 
@@ -433,4 +448,26 @@
 <!-- Vendored ethers v6 UMD + the x402 signer (no CDN inside the container). -->
 <script src="/static/js/ethers-6.14.min.js" defer></script>
 <script src="/static/js/payment.js" defer></script>
+<script>
+async function verifyOnchainHires(btn) {
+  const chainId = btn.dataset.chainId;
+  const tokenId = btn.dataset.tokenId;
+  btn.setAttribute('aria-busy', 'true');
+  btn.textContent = 'Checking...';
+  try {
+    const resp = await fetch('/api/hires/onchain/' + chainId + '/' + tokenId);
+    const data = await resp.json();
+    const resultEl = btn.nextElementSibling;
+    const countEl = resultEl.querySelector('.onchain-count');
+    countEl.textContent = data.total_hires || 0;
+    resultEl.style.display = 'inline';
+    btn.textContent = 'Verified \u2713';
+    btn.classList.add('verified');
+    btn.setAttribute('aria-busy', 'false');
+  } catch (e) {
+    btn.textContent = 'Error \u2014 retry';
+    btn.setAttribute('aria-busy', 'false');
+  }
+}
+</script>
 {% endblock %}
