@@ -216,6 +216,7 @@ async def indexer_health(
     """Check indexer health: last indexed block and counts for both tables."""
     from app.db.models.onchain_index import OnchainTransfer, OnchainAgentEvent
     from app.config import get_settings
+    import httpx
 
     settings = get_settings()
 
@@ -239,6 +240,27 @@ async def indexer_health(
 
     last_block = max(t_row.last_block or 0, e_row.last_block or 0)
 
+    # Quick Alchemy connectivity test
+    alchemy_status = "not_configured"
+    alchemy_key = getattr(settings, "alchemy_api_key", "")
+    if alchemy_key:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    f"https://bnb-mainnet.g.alchemy.com/v2/{alchemy_key}",
+                    json={"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1},
+                )
+                data = resp.json()
+                if "result" in data:
+                    alchemy_block = int(data["result"], 16)
+                    alchemy_status = f"ok (block {alchemy_block})"
+                elif "error" in data:
+                    alchemy_status = f"error: {data['error'].get('message', 'unknown')[:80]}"
+                else:
+                    alchemy_status = "unexpected response"
+        except Exception as e:
+            alchemy_status = f"connection failed: {str(e)[:60]}"
+
     return {
         "last_block": last_block,
         "transfers": t_row.total or 0,
@@ -247,9 +269,10 @@ async def indexer_health(
         "events_first_block": e_row.first_block,
         "status": "healthy" if last_block else "empty",
         "keys": {
-            "alchemy": "set" if getattr(settings, "alchemy_api_key", "") else "missing",
+            "alchemy": "set" if alchemy_key else "missing",
             "chainstack": "set" if getattr(settings, "chainstack_api_key", "") else "missing",
         },
+        "alchemy_test": alchemy_status,
     }
 
 
