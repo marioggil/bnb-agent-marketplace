@@ -189,11 +189,16 @@ class Settings(BaseSettings):
         description="Permit2 address; reserved for future rails (unused in v1).",
     )
 
-    # ---- On-chain indexer (Alchemy RPC) -----------------------------------
+    # ---- On-chain indexer (multi-RPC) ------------------------------------
     alchemy_api_key: str = Field(
         default="",
         alias="ALCHEMY_API_KEY",
-        description="Alchemy API key for BSC RPC. Empty disables the on-chain indexer.",
+        description="Alchemy API key for BSC RPC. Fallback when Chainstack is unavailable.",
+    )
+    chainstack_api_key: str = Field(
+        default="",
+        alias="CHAINSTACK_API_KEY",
+        description="Chainstack API key for BSC RPC. Primary provider (cheaper for eth_getLogs).",
     )
 
     @field_validator("secret_key")
