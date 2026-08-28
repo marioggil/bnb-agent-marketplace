@@ -303,6 +303,7 @@ async def _index_cycle(rpc_url: str) -> None:
                 from_block,
                 to_block,
             )
+            print(f"[indexer] OK: {transfers_inserted} transfers + {events_inserted} events (blocks {from_block}-{to_block})", flush=True)
     finally:
         await indexer.close()
 
@@ -314,16 +315,19 @@ async def run_indexer_loop() -> None:
     # Build RPC URL from Alchemy key
     alchemy_key = getattr(settings, "alchemy_api_key", "")
     if not alchemy_key:
+        print("[indexer] DISABLED: no ALCHEMY_API_KEY in Settings", flush=True)
         logger.info("On-chain indexer disabled: no ALCHEMY_API_KEY configured")
         return
 
     rpc_url = f"https://bnb-mainnet.g.alchemy.com/v2/{alchemy_key}"
+    print(f"[indexer] STARTED (interval={INDEX_INTERVAL}s, blocks/cycle={BLOCKS_PER_CYCLE})", flush=True)
     logger.info("On-chain indexer started (interval=%ds, blocks/cycle=%d)", INDEX_INTERVAL, BLOCKS_PER_CYCLE)
 
     while True:
         try:
             await _index_cycle(rpc_url)
-        except Exception:
+        except Exception as exc:
+            print(f"[indexer] CYCLE FAILED: {exc}", flush=True)
             logger.exception("Indexer cycle failed")
         await asyncio.sleep(INDEX_INTERVAL)
 

@@ -38,11 +38,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     # Start on-chain indexer if Alchemy key is configured
     indexer_task = None
-    if settings.alchemy_api_key:
+    alchemy_key = getattr(settings, "alchemy_api_key", "")
+    print(f"[lifespan] ALCHEMY_API_KEY configured: {'yes' if alchemy_key else 'NO'}", flush=True)
+    if alchemy_key:
         from app.services.onchain_indexer import run_indexer_loop
 
         indexer_task = asyncio.create_task(run_indexer_loop())
-        logger.info("On-chain indexer started")
+        print("[lifespan] On-chain indexer task started", flush=True)
+    else:
+        print("[lifespan] On-chain indexer DISABLED (no ALCHEMY_API_KEY)", flush=True)
 
     try:
         yield
