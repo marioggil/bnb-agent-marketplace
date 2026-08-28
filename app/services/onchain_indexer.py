@@ -2,15 +2,15 @@
 
 Runs TWO concurrent workers during the FastAPI lifespan:
 
-1. BACKFILL worker (Chainstack): scans historical blocks from $U token creation
-   - Uses Chainstack: 1 RU/request, 3M RU/month free
-   - 1,200 blocks/cycle, 4 min interval → ~3.25M RU/month
-   - Speed: ~4.3 months to catch up from block 71,922,111
+1. BACKFILL worker (Alchemy): scans historical blocks from $U token creation
+   - Uses Alchemy: 75 CU per eth_getLogs, 10 blocks/call
+   - 250 blocks/cycle, 4 min interval → ~18,750 CU/cycle → ~16.9M CU/month
+   - Only provider supporting historical eth_getLogs on free tier
 
-2. REALTIME worker (Alchemy): scans recent blocks to stay current
-   - Uses Alchemy: CU-based, 30M CU/month free
-   - 250 blocks/cycle, 4 min interval → ~24.7M CU/month
-   - Always keeps up with chain head
+2. REALTIME worker (Chainstack): scans recent blocks to stay current
+   - Uses Chainstack: 1 RU per request, 100 blocks/call
+   - 75 blocks/cycle, 4 min interval → 1 RU/cycle → 10,800 RU/month (0.36%)
+   - Chainstack free tier: eth_getLogs works for last ~100 blocks only
 
 Both workers write to the same DB with ON CONFLICT DO NOTHING,
 so no duplicates even if ranges temporarily overlap.
@@ -44,18 +44,24 @@ IDENTITY_REGISTRY = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
 # ERC-20 Transfer topic (same signature as ERC-721)
 TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
-# Alchemy free tier: 10 blocks per eth_getLogs request
-BLOCK_RANGE = 10
-
 # $U token creation block on BSC
 U_TOKEN_CREATION_BLOCK = 71_922_111
 
-# Backfill worker (Chainstack): 1,200 blocks every 4 min
-BACKFILL_CHUNK_SIZE = 1200
+# Provider-specific block ranges for eth_getLogs
+ALCHEMY_MAX_BLOCK_RANGE = 10       # Alchemy free tier: 10 blocks per request
+CHAINSTACK_MAX_BLOCK_RANGE = 100   # Chainstack free tier: 100 blocks per request
+
+# Backfill worker (Alchemy): scans historical blocks
+# Alchemy: 75 CU per eth_getLogs, 10 blocks/call
+# Budget: 25M CU/month → 333K calls → 3.33M blocks/month
+# 250 blocks/cycle, 240s interval → ~25 calls/cycle → 18,750 CU/cycle
+BACKFILL_CHUNK_SIZE = 250
 BACKFILL_INTERVAL = 240
 
-# Realtime worker (Alchemy): 250 blocks every 4 min
-REALTIME_CHUNK_SIZE = 250
+# Realtime worker (Chainstack): keeps up with chain head
+# Chainstack: 1 RU per request, 100 blocks/call
+# 75 blocks/cycle = 1 request = 1 RU/cycle → 10,800 RU/month (0.36% of 3M)
+REALTIME_CHUNK_SIZE = 75
 REALTIME_INTERVAL = 240
 
 
@@ -96,10 +102,11 @@ async def get_logs(
     to_block: int,
     address: str,
     topics: list[str | None],
+    max_range: int = ALCHEMY_MAX_BLOCK_RANGE,
 ) -> list[dict[str, Any]]:
-    """Get event logs in a block range (max 10 blocks)."""
-    if to_block - from_block > 9:
-        to_block = from_block + 9
+    """Get event logs in a block range, capped by max_range per request."""
+    if to_block - from_block > max_range - 1:
+        to_block = from_block + max_range - 1
 
     data = await client.rpc_call(
         "eth_getLogs",
@@ -115,14 +122,16 @@ async def scan_u_transfers(
     from_block: int,
     to_block: int,
     token_address: str = U_TOKEN_MAINNET,
+    max_range: int = ALCHEMY_MAX_BLOCK_RANGE,
 ) -> list[dict[str, Any]]:
     """Scan $U ERC-20 transfers in a block range."""
     all_logs = []
     current = from_block
     while current <= to_block:
-        batch_end = min(current + 9, to_block)
+        batch_end = min(current + max_range - 1, to_block)
         logs = await get_logs(
-            client, current, batch_end, token_address, [TRANSFER_TOPIC, None, None]
+            client, current, batch_end, token_address, [TRANSFER_TOPIC, None, None],
+            max_range=max_range,
         )
         all_logs.extend(logs)
         current = batch_end + 1
@@ -134,14 +143,16 @@ async def scan_agent_nft_events(
     client: MultiRPCClient,
     from_block: int,
     to_block: int,
+    max_range: int = ALCHEMY_MAX_BLOCK_RANGE,
 ) -> list[dict[str, Any]]:
     """Scan agent NFT (ERC-721) Transfer events on the IdentityRegistry."""
     all_logs = []
     current = from_block
     while current <= to_block:
-        batch_end = min(current + 9, to_block)
+        batch_end = min(current + max_range - 1, to_block)
         logs = await get_logs(
-            client, current, batch_end, IDENTITY_REGISTRY, [TRANSFER_TOPIC, None, None, None]
+            client, current, batch_end, IDENTITY_REGISTRY, [TRANSFER_TOPIC, None, None, None],
+            max_range=max_range,
         )
         all_logs.extend(logs)
         current = batch_end + 1
@@ -168,12 +179,13 @@ async def _scan_and_store(
     to_block: int,
     wallet_to_agent: dict[str, str],
     u_token: str,
+    max_range: int = ALCHEMY_MAX_BLOCK_RANGE,
 ) -> tuple[int, int]:
     """Scan a block range and store results. Returns (transfers, events)."""
     from app.db.models.onchain_index import OnchainAgentEvent, OnchainTransfer
 
     # ---- Scan $U ERC-20 transfers ----
-    u_logs = await scan_u_transfers(client, from_block, to_block, u_token)
+    u_logs = await scan_u_transfers(client, from_block, to_block, u_token, max_range=max_range)
 
     transfers_inserted = 0
     for log in u_logs:
@@ -204,7 +216,7 @@ async def _scan_and_store(
         transfers_inserted += 1
 
     # ---- Scan agent NFT events ----
-    nft_logs = await scan_agent_nft_events(client, from_block, to_block)
+    nft_logs = await scan_agent_nft_events(client, from_block, to_block, max_range=max_range)
 
     events_inserted = 0
     for log in nft_logs:
@@ -243,7 +255,7 @@ async def _scan_and_store(
 
 
 # ============================================================================
-# BACKFILL WORKER — uses Chainstack (cheap for eth_getLogs)
+# BACKFILL WORKER — uses Alchemy (only provider supporting historical eth_getLogs)
 # ============================================================================
 
 async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
@@ -262,10 +274,6 @@ async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
         from sqlalchemy import text
 
         # Find the backfill frontier: lowest block not yet scanned by backfill
-        # We use a separate tracking: the backfill scans from $U creation forward
-        # and the realtime worker handles the tip. The backfill's frontier is
-        # simply MAX(block_number) from onchain_transfers, but only if it's
-        # still behind the realtime worker's starting point.
         result = await session.execute(
             text("SELECT COALESCE(MAX(block_number), 0) FROM onchain_transfers")
         )
@@ -289,7 +297,8 @@ async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
         u_token = U_TOKEN_MAINNET if settings.x402_chain_id == 56 else U_TOKEN_TESTNET
 
         transfers, events = await _scan_and_store(
-            client, session, from_block, to_block, wallet_to_agent, u_token
+            client, session, from_block, to_block, wallet_to_agent, u_token,
+            max_range=ALCHEMY_MAX_BLOCK_RANGE,
         )
 
         blocks_processed = to_block - from_block + 1
@@ -299,21 +308,21 @@ async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
         print(
             f"[backfill] {transfers}T + {events}E "
             f"({from_block:,}-{to_block:,}) | gap: {remaining:,} | "
-            f"Chainstack: {usage['usage']['chainstack']:,} RU",
+            f"Alchemy: {usage['usage']['alchemy']:,} CU",
             flush=True,
         )
 
         return "backfill", blocks_processed
 
 
-async def run_backfill_worker(chainstack_key: str) -> None:
-    """Backfill worker: scans historical blocks using Chainstack."""
-    if not chainstack_key:
-        print("[backfill] DISABLED: no CHAINSTACK_API_KEY", flush=True)
+async def run_backfill_worker(alchemy_key: str) -> None:
+    """Backfill worker: scans historical blocks using Alchemy."""
+    if not alchemy_key:
+        print("[backfill] DISABLED: no ALCHEMY_API_KEY", flush=True)
         return
 
-    client = MultiRPCClient(chainstack_key=chainstack_key)
-    print(f"[backfill] STARTED (Chainstack, {BACKFILL_CHUNK_SIZE}bl/{BACKFILL_INTERVAL}s)", flush=True)
+    client = MultiRPCClient(alchemy_key=alchemy_key)
+    print(f"[backfill] STARTED (Alchemy, {BACKFILL_CHUNK_SIZE}bl/{BACKFILL_INTERVAL}s)", flush=True)
 
     try:
         while True:
@@ -329,7 +338,7 @@ async def run_backfill_worker(chainstack_key: str) -> None:
 
 
 # ============================================================================
-# REALTIME WORKER — uses Alchemy (keeps up with chain head)
+# REALTIME WORKER — uses Chainstack (cheap for recent eth_getLogs)
 # ============================================================================
 
 async def _realtime_cycle(client: MultiRPCClient) -> tuple[str, int]:
@@ -368,7 +377,8 @@ async def _realtime_cycle(client: MultiRPCClient) -> tuple[str, int]:
         u_token = U_TOKEN_MAINNET if settings.x402_chain_id == 56 else U_TOKEN_TESTNET
 
         transfers, events = await _scan_and_store(
-            client, session, from_block, to_block, wallet_to_agent, u_token
+            client, session, from_block, to_block, wallet_to_agent, u_token,
+            max_range=CHAINSTACK_MAX_BLOCK_RANGE,
         )
 
         blocks_processed = to_block - from_block + 1
@@ -378,21 +388,21 @@ async def _realtime_cycle(client: MultiRPCClient) -> tuple[str, int]:
         print(
             f"[realtime] {transfers}T + {events}E "
             f"({from_block:,}-{to_block:,}) | gap: {remaining:,} | "
-            f"Alchemy: {usage['usage']['alchemy']:,} CU",
+            f"Chainstack: {usage['usage']['chainstack']:,} RU",
             flush=True,
         )
 
         return "realtime", blocks_processed
 
 
-async def run_realtime_worker(alchemy_key: str) -> None:
-    """Realtime worker: keeps up with chain head using Alchemy."""
-    if not alchemy_key:
-        print("[realtime] DISABLED: no ALCHEMY_API_KEY", flush=True)
+async def run_realtime_worker(chainstack_key: str) -> None:
+    """Realtime worker: keeps up with chain head using Chainstack."""
+    if not chainstack_key:
+        print("[realtime] DISABLED: no CHAINSTACK_API_KEY", flush=True)
         return
 
-    client = MultiRPCClient(alchemy_key=alchemy_key)
-    print(f"[realtime] STARTED (Alchemy, {REALTIME_CHUNK_SIZE}bl/{REALTIME_INTERVAL}s)", flush=True)
+    client = MultiRPCClient(chainstack_key=chainstack_key)
+    print(f"[realtime] STARTED (Chainstack, {REALTIME_CHUNK_SIZE}bl/{REALTIME_INTERVAL}s)", flush=True)
 
     try:
         while True:
@@ -423,15 +433,15 @@ async def run_indexer_loop() -> None:
         return
 
     print("[indexer] STARTING DUAL WORKERS:", flush=True)
-    print(f"  Backfill:  Chainstack {'✅' if chainstack_key else '❌'} ({BACKFILL_CHUNK_SIZE}bl/{BACKFILL_INTERVAL}s)", flush=True)
-    print(f"  Realtime:  Alchemy     {'✅' if alchemy_key else '❌'} ({REALTIME_CHUNK_SIZE}bl/{REALTIME_INTERVAL}s)", flush=True)
+    print(f"  Backfill:  Alchemy     {'✅' if alchemy_key else '❌'} ({BACKFILL_CHUNK_SIZE}bl/{BACKFILL_INTERVAL}s)", flush=True)
+    print(f"  Realtime:  Chainstack  {'✅' if chainstack_key else '❌'} ({REALTIME_CHUNK_SIZE}bl/{REALTIME_INTERVAL}s)", flush=True)
 
     # Run both workers concurrently
     tasks = []
-    if chainstack_key:
-        tasks.append(asyncio.create_task(run_backfill_worker(chainstack_key)))
     if alchemy_key:
-        tasks.append(asyncio.create_task(run_realtime_worker(alchemy_key)))
+        tasks.append(asyncio.create_task(run_backfill_worker(alchemy_key)))
+    if chainstack_key:
+        tasks.append(asyncio.create_task(run_realtime_worker(chainstack_key)))
 
     if tasks:
         await asyncio.gather(*tasks)
