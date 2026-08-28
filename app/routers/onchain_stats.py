@@ -282,6 +282,7 @@ async def test_block_transfers(
 ) -> dict:
     """TEMP: Test if Alchemy can see $U transfers at a specific block."""
     from app.config import get_settings
+    import httpx
 
     settings = get_settings()
     alchemy_key = getattr(settings, "alchemy_api_key", "")
