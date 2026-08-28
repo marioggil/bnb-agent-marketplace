@@ -344,6 +344,10 @@ async def run_backfill_worker(alchemy_key: str) -> None:
 async def _realtime_cycle(client: MultiRPCClient) -> tuple[str, int]:
     """Run one realtime cycle: scan recent blocks to stay current.
 
+    Chainstack only serves eth_getLogs for the last ~100 blocks.
+    If the DB is far behind, we jump to the chain head instead of
+    trying to catch up — the backfill worker handles history.
+
     Returns: (mode, blocks_processed)
     """
     settings = get_settings()
@@ -362,13 +366,20 @@ async def _realtime_cycle(client: MultiRPCClient) -> tuple[str, int]:
         last_block = result.scalar()
 
         if last_block == 0:
-            last_block = current_block - 28800  # last 24h
+            # First run: start from chain head minus our chunk
+            from_block = current_block - REALTIME_CHUNK_SIZE
+        else:
+            from_block = last_block + 1
 
-        from_block = last_block + 1
         gap = current_block - from_block
 
         if gap <= 0:
             return "caught_up", 0
+
+        # If gap is larger than what Chainstack can handle, jump to chain head
+        # The backfill worker will fill in the historical gap
+        if gap > CHAINSTACK_MAX_BLOCK_RANGE * 2:
+            from_block = current_block - REALTIME_CHUNK_SIZE
 
         # Only scan a small realtime chunk
         to_block = min(current_block, from_block + REALTIME_CHUNK_SIZE - 1)
