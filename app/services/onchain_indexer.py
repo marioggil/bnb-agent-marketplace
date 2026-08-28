@@ -258,11 +258,18 @@ async def _scan_and_store(
 # BACKFILL WORKER — uses Alchemy (only provider supporting historical eth_getLogs)
 # ============================================================================
 
+# In-memory backfill position tracker.  Survives across cycles within a
+# single process lifetime.  On restart the backfill re-reads from the DB
+# (which now contains both workers' writes) and picks up from there.
+_backfill_last_scanned: int = 0
+
+
 async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
     """Run one backfill cycle: scan a chunk of historical blocks.
 
     Returns: (mode, blocks_processed)
     """
+    global _backfill_last_scanned
     settings = get_settings()
 
     current_block = await get_current_block(client)
@@ -273,21 +280,29 @@ async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
     async with session_factory() as session:
         from sqlalchemy import text
 
-        # Find the backfill frontier: lowest block not yet scanned by backfill
-        result = await session.execute(
-            text("SELECT COALESCE(MAX(block_number), 0) FROM onchain_transfers")
-        )
-        last_block = result.scalar()
+        # Determine where to start.
+        # On first run (or after restart), seed from the DB's highest block
+        # so we don't re-scan blocks the realtime worker already handled.
+        if _backfill_last_scanned == 0:
+            result = await session.execute(text("""
+                SELECT COALESCE(
+                    (SELECT MAX(block_number) FROM onchain_transfers),
+                    (SELECT MAX(block_number) FROM onchain_agent_events),
+                    0
+                )
+            """))
+            db_max = result.scalar() or 0
+            # If DB has blocks near the chain head (from realtime worker),
+            # start backfill from $U creation, not from there.
+            if db_max > U_TOKEN_CREATION_BLOCK + 1_000_000:
+                _backfill_last_scanned = U_TOKEN_CREATION_BLOCK - 1
+            else:
+                _backfill_last_scanned = db_max if db_max > 0 else U_TOKEN_CREATION_BLOCK - 1
 
-        # First run: start from $U token creation
-        if last_block == 0:
-            last_block = U_TOKEN_CREATION_BLOCK - 1
-
-        from_block = last_block + 1
+        from_block = _backfill_last_scanned + 1
         gap = current_block - from_block
 
         if gap <= REALTIME_CHUNK_SIZE:
-            # Backfill is caught up to within realtime range — let realtime handle it
             return "caught_up", 0
 
         # Scan a backfill chunk
@@ -304,6 +319,9 @@ async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
         blocks_processed = to_block - from_block + 1
         remaining = current_block - to_block
         usage = client.get_usage_summary()
+
+        # Advance the in-memory tracker
+        _backfill_last_scanned = to_block
 
         print(
             f"[backfill] {transfers}T + {events}E "
