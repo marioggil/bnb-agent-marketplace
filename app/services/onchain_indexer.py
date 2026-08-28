@@ -36,11 +36,11 @@ TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523
 # Alchemy free tier: 10 blocks per request
 BLOCK_RANGE = 10
 
-# How often to run the indexer (seconds)
-INDEX_INTERVAL = 30
+# How often to run the indexer (seconds) — tuned for Alchemy free tier (30M CU/mo)
+INDEX_INTERVAL = 240  # 4 minutes
 
-# How many blocks to index per cycle (300 = ~15 minutes of blocks)
-BLOCKS_PER_CYCLE = 300
+# How many blocks to index per cycle — tuned for ~24.7M CU/month
+BLOCKS_PER_CYCLE = 250
 
 
 def _extract_addr(topic: str | bytes) -> str:
