@@ -276,4 +276,90 @@ async def indexer_health(
     }
 
 
+@router.get("/test-block/{block_number}")
+async def test_block_transfers(
+    block_number: int,
+) -> dict:
+    """TEMP: Test if Alchemy can see $U transfers at a specific block."""
+    from app.config import get_settings
+
+    settings = get_settings()
+    alchemy_key = getattr(settings, "alchemy_api_key", "")
+    if not alchemy_key:
+        return {"error": "no ALCHEMY_API_KEY"}
+
+    U_TOKEN = "0xcE24439F2D9C6a2289F741120FE202248B666666"
+    TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+
+    results = {}
+
+    # Test 1: eth_getLogs for $U transfers at this block (10-block range)
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"https://bnb-mainnet.g.alchemy.com/v2/{alchemy_key}",
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "eth_getLogs",
+                    "params": [{
+                        "fromBlock": hex(block_number),
+                        "toBlock": hex(block_number + 9),
+                        "address": U_TOKEN,
+                        "topics": [TRANSFER_TOPIC, None, None],
+                    }],
+                    "id": 1,
+                },
+            )
+            data = resp.json()
+            if "result" in data:
+                logs = data["result"]
+                results["u_transfers"] = len(logs)
+                results["sample"] = [
+                    {
+                        "from": "0x" + log["topics"][1][-40:],
+                        "to": "0x" + log["topics"][2][-40:],
+                        "value": str(int(log["data"], 16)),
+                        "block": int(log["blockNumber"], 16),
+                        "tx": log["transactionHash"][:20] + "...",
+                    }
+                    for log in logs[:3]
+                ]
+            elif "error" in data:
+                results["u_transfers_error"] = data["error"].get("message", "unknown")
+            else:
+                results["u_transfers"] = "unexpected"
+    except Exception as e:
+        results["u_transfers_error"] = str(e)[:100]
+
+    # Test 2: eth_getLogs for agent NFT events at this block
+    IDENTITY_REGISTRY = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"https://bnb-mainnet.g.alchemy.com/v2/{alchemy_key}",
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "eth_getLogs",
+                    "params": [{
+                        "fromBlock": hex(block_number),
+                        "toBlock": hex(block_number + 9),
+                        "address": IDENTITY_REGISTRY,
+                        "topics": [TRANSFER_TOPIC, None, None, None],
+                    }],
+                    "id": 2,
+                },
+            )
+            data = resp.json()
+            if "result" in data:
+                results["nft_events"] = len(data["result"])
+            elif "error" in data:
+                results["nft_events_error"] = data["error"].get("message", "unknown")
+    except Exception as e:
+        results["nft_events_error"] = str(e)[:100]
+
+    results["block_tested"] = block_number
+    results["range"] = f"{block_number}-{block_number + 9}"
+    return results
+
+
 __all__ = ["router"]
