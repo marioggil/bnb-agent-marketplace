@@ -46,6 +46,13 @@ esac
 echo "preflight OK; running alembic upgrade head..."
 alembic upgrade head
 
-# --- 3. server -----------------------------------------------------------
+# --- 3. backfill (optional) ----------------------------------------------
+if [ "${RUN_BACKFILL:-}" = "true" ]; then
+  echo "RUN_BACKFILL=true — starting historical backfill in background..."
+  python -m app.services.onchain_backfill >> /tmp/backfill.log 2>&1 &
+  echo "Backfill PID: $!"
+fi
+
+# --- 4. server -----------------------------------------------------------
 echo "starting uvicorn..."
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000
