@@ -214,11 +214,13 @@ async def indexer_health(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     """Check indexer health: last indexed block and transfer count."""
+    from app.db.models.onchain_index import OnchainTransfer
+
     result = await db.execute(
         select(
-            func.max(text("block_number")).label("last_block"),
+            func.max(OnchainTransfer.block_number).label("last_block"),
             func.count().label("total_transfers"),
-        )
+        ).select_from(OnchainTransfer)
     )
     row = result.one()
 
