@@ -50,9 +50,9 @@ U_TOKEN_CREATION_BLOCK = 71_922_111
 INDEX_INTERVAL = 240  # 4 minutes
 BLOCKS_PER_CYCLE = 250
 
-# Backfill mode: larger chunks to close the gap faster
-BACKFILL_CHUNK_SIZE = 5000
-BACKFILL_INTERVAL = 30  # 30 seconds between backfill chunks (faster catch-up)
+# Backfill mode: same pace as real-time to stay within free tier (~24.7M CU/month)
+BACKFILL_CHUNK_SIZE = 250
+BACKFILL_INTERVAL = 240  # same as real-time
 BACKFILL_BATCH_DELAY = 0.05  # seconds between RPC calls in backfill
 
 
@@ -309,9 +309,9 @@ async def _index_cycle(rpc_url: str) -> tuple[str, int]:
             gap = current_block - from_block
 
             # Decide mode based on gap size
-            if gap > BACKFILL_CHUNK_SIZE:
-                # BACKFILL MODE: scan a large chunk to close the gap faster
-                to_block = min(current_block, from_block + BACKFILL_CHUNK_SIZE - 1)
+            if gap > BLOCKS_PER_CYCLE:
+                # BACKFILL MODE: scan a chunk to close the gap (same pace as real-time)
+                to_block = min(current_block, from_block + BLOCKS_PER_CYCLE - 1)
                 mode = "backfill"
                 interval = BACKFILL_INTERVAL
             elif gap > 0:
