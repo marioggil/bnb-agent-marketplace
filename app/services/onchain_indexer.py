@@ -4,6 +4,13 @@ Runs as a background task during the FastAPI lifespan. Scans $U (ERC-20)
 transfers and agent NFT (ERC-721) events, links them to known agents,
 and stores everything in the database for fast local queries.
 
+Modes:
+    - BACKFILL: when behind by >BACKFILL_CHUNK_SIZE blocks, scans 5,000 blocks/cycle
+    - REALTIME: when caught up, scans 250 blocks every 4 minutes (~24.7M CU/month)
+
+The indexer automatically switches between modes based on the gap between
+the last indexed block and the current chain head.
+
 Usage:
     The worker is started automatically by the FastAPI lifespan in main.py.
     It can also be run standalone: python -m app.services.onchain_indexer
@@ -36,11 +43,17 @@ TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523
 # Alchemy free tier: 10 blocks per request
 BLOCK_RANGE = 10
 
-# How often to run the indexer (seconds) — tuned for Alchemy free tier (30M CU/mo)
-INDEX_INTERVAL = 240  # 4 minutes
+# $U token creation block on BSC
+U_TOKEN_CREATION_BLOCK = 71_922_111
 
-# How many blocks to index per cycle — tuned for ~24.7M CU/month
+# Real-time mode: how often to run (seconds), tuned for ~24.7M CU/month
+INDEX_INTERVAL = 240  # 4 minutes
 BLOCKS_PER_CYCLE = 250
+
+# Backfill mode: larger chunks to close the gap faster
+BACKFILL_CHUNK_SIZE = 5000
+BACKFILL_INTERVAL = 30  # 30 seconds between backfill chunks (faster catch-up)
+BACKFILL_BATCH_DELAY = 0.05  # seconds between RPC calls in backfill
 
 
 def _extract_addr(topic: str | bytes) -> str:
@@ -177,24 +190,106 @@ async def _resolve_agent_wallets(session) -> dict[str, str]:
     return {row[0].lower(): row[1] for row in result.all()}
 
 
-async def _index_cycle(rpc_url: str) -> None:
-    """Run one indexing cycle: scan recent blocks and store new transfers."""
-    from app.db.models.onchain_index import OnchainTransfer, OnchainAgentEvent
+async def _scan_and_store(
+    indexer: OnchainIndexer,
+    session,
+    from_block: int,
+    to_block: int,
+    wallet_to_agent: dict[str, str],
+    u_token: str,
+) -> tuple[int, int]:
+    """Scan a block range and store results. Returns (transfers, events)."""
+    from app.db.models.onchain_index import OnchainAgentEvent, OnchainTransfer
 
+    # ---- Scan $U ERC-20 transfers ----
+    u_logs = await indexer.scan_u_transfers(from_block, to_block, u_token)
+
+    transfers_inserted = 0
+    for log in u_logs:
+        from_addr = _extract_addr(log["topics"][1])
+        to_addr = _extract_addr(log["topics"][2])
+        value = Decimal(int(log["data"], 16)) / Decimal(10**18)
+        block_num = int(log["blockNumber"], 16)
+        tx = log["transactionHash"]
+
+        ts = await indexer.get_block_timestamp(block_num)
+        if ts is None:
+            ts = datetime.now(timezone.utc)
+
+        linked_agent = wallet_to_agent.get(to_addr.lower())
+
+        stmt = pg_insert(OnchainTransfer).values(
+            from_address=from_addr,
+            to_address=to_addr,
+            value=value,
+            block_number=block_num,
+            timestamp=ts,
+            tx_hash=tx,
+            transfer_type="erc20_u",
+            linked_agent_id=linked_agent,
+        )
+        stmt = stmt.on_conflict_do_nothing()
+        await session.execute(stmt)
+        transfers_inserted += 1
+
+    # ---- Scan agent NFT events ----
+    nft_logs = await indexer.scan_agent_nft_events(from_block, to_block)
+
+    events_inserted = 0
+    for log in nft_logs:
+        from_addr = _extract_addr(log["topics"][1])
+        to_addr = _extract_addr(log["topics"][2])
+        token_id = _extract_token_id(log["topics"][3])
+        block_num = int(log["blockNumber"], 16)
+        tx = log["transactionHash"]
+
+        ts = await indexer.get_block_timestamp(block_num)
+        if ts is None:
+            ts = datetime.now(timezone.utc)
+
+        event_type = "mint" if from_addr == "0x" + "0" * 40 else "transfer"
+
+        from app.db.models.agent import BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id
+
+        agent_id = build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id)
+
+        stmt = pg_insert(OnchainAgentEvent).values(
+            agent_id=agent_id,
+            token_id=token_id,
+            event_type=event_type,
+            from_address=from_addr,
+            to_address=to_addr,
+            block_number=block_num,
+            timestamp=ts,
+            tx_hash=tx,
+        )
+        stmt = stmt.on_conflict_do_nothing()
+        await session.execute(stmt)
+        events_inserted += 1
+
+    await session.commit()
+    return transfers_inserted, events_inserted
+
+
+async def _index_cycle(rpc_url: str) -> tuple[str, int]:
+    """Run one indexing cycle.
+
+    Returns:
+        (mode, blocks_processed) — mode is "backfill", "realtime", or "caught_up"
+    """
     settings = get_settings()
-    db_url = settings.database_url
 
     # Skip if no Alchemy key
     if not rpc_url or "ALCHEMY_API_KEY" in rpc_url:
         logger.debug("No Alchemy RPC URL configured, skipping indexer cycle")
-        return
+        return "skipped", 0
 
     indexer = OnchainIndexer(rpc_url)
     try:
         current_block = await indexer.get_current_block()
         if current_block is None:
             logger.warning("Could not get current block, skipping indexer cycle")
-            return
+            return "error", 0
 
         # Read last indexed block from DB
         session_factory = get_sessionmaker()
@@ -206,110 +301,56 @@ async def _index_cycle(rpc_url: str) -> None:
             )
             last_block = result.scalar()
 
-            # If first run, start from a reasonable point (last 24h ~ 86400 blocks / 3s = ~28800)
+            # First run: start from $U token creation block
             if last_block == 0:
-                last_block = current_block - 28800
+                last_block = U_TOKEN_CREATION_BLOCK - 1
 
             from_block = last_block + 1
-            to_block = min(current_block, from_block + BLOCKS_PER_CYCLE - 1)
+            gap = current_block - from_block
 
-            if from_block > current_block:
+            # Decide mode based on gap size
+            if gap > BACKFILL_CHUNK_SIZE:
+                # BACKFILL MODE: scan a large chunk to close the gap faster
+                to_block = min(current_block, from_block + BACKFILL_CHUNK_SIZE - 1)
+                mode = "backfill"
+                interval = BACKFILL_INTERVAL
+            elif gap > 0:
+                # REALTIME MODE: scan a small chunk to keep up
+                to_block = min(current_block, from_block + BLOCKS_PER_CYCLE - 1)
+                mode = "realtime"
+                interval = INDEX_INTERVAL
+            else:
+                # CAUGHT UP: nothing to do
                 logger.debug("Already up to date (last=%d, current=%d)", last_block, current_block)
-                return
+                return "caught_up", 0
 
-            logger.info("Indexing blocks %d → %d", from_block, to_block)
+            logger.info("Indexing blocks %d → %d (%s mode, gap=%d)", from_block, to_block, mode, gap)
 
             # Resolve agent wallets
             wallet_to_agent = await _resolve_agent_wallets(session)
 
-            # ---- Scan $U ERC-20 transfers ----
+            # Scan and store
             u_token = U_TOKEN_MAINNET if settings.x402_chain_id == 56 else U_TOKEN_TESTNET
-            u_logs = await indexer.scan_u_transfers(from_block, to_block, u_token)
-
-            transfers_inserted = 0
-            for log in u_logs:
-                from_addr = _extract_addr(log["topics"][1])
-                to_addr = _extract_addr(log["topics"][2])
-                value = Decimal(int(log["data"], 16)) / Decimal(10**18)
-                block_num = int(log["blockNumber"], 16)
-                tx = log["transactionHash"]
-
-                # Get timestamp
-                ts = await indexer.get_block_timestamp(block_num)
-                if ts is None:
-                    ts = datetime.now(timezone.utc)
-
-                # Link to agent
-                linked_agent = wallet_to_agent.get(to_addr.lower())
-
-                # Upsert
-                stmt = pg_insert(OnchainTransfer).values(
-                    from_address=from_addr,
-                    to_address=to_addr,
-                    value=value,
-                    block_number=block_num,
-                    timestamp=ts,
-                    tx_hash=tx,
-                    transfer_type="erc20_u",
-                    linked_agent_id=linked_agent,
-                )
-                stmt = stmt.on_conflict_do_nothing()
-                await session.execute(stmt)
-                transfers_inserted += 1
-
-            # ---- Scan agent NFT events ----
-            nft_logs = await indexer.scan_agent_nft_events(from_block, to_block)
-
-            events_inserted = 0
-            for log in nft_logs:
-                from_addr = _extract_addr(log["topics"][1])
-                to_addr = _extract_addr(log["topics"][2])
-                token_id = _extract_token_id(log["topics"][3])
-                block_num = int(log["blockNumber"], 16)
-                tx = log["transactionHash"]
-
-                ts = await indexer.get_block_timestamp(block_num)
-                if ts is None:
-                    ts = datetime.now(timezone.utc)
-
-                # Determine event type
-                event_type = "mint" if from_addr == "0x" + "0" * 40 else "transfer"
-
-                # Build agent_id
-                from app.db.models.agent import BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id
-
-                agent_id = build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id)
-
-                stmt = pg_insert(OnchainAgentEvent).values(
-                    agent_id=agent_id,
-                    token_id=token_id,
-                    event_type=event_type,
-                    from_address=from_addr,
-                    to_address=to_addr,
-                    block_number=block_num,
-                    timestamp=ts,
-                    tx_hash=tx,
-                )
-                stmt = stmt.on_conflict_do_nothing()
-                await session.execute(stmt)
-                events_inserted += 1
-
-            await session.commit()
-
-            logger.info(
-                "Indexed %d $U transfers + %d NFT events (blocks %d-%d)",
-                transfers_inserted,
-                events_inserted,
-                from_block,
-                to_block,
+            transfers, events = await _scan_and_store(
+                indexer, session, from_block, to_block, wallet_to_agent, u_token
             )
-            print(f"[indexer] OK: {transfers_inserted} transfers + {events_inserted} events (blocks {from_block}-{to_block})", flush=True)
+
+            blocks_processed = to_block - from_block + 1
+            remaining = current_block - to_block
+
+            print(
+                f"[indexer] {mode.upper()}: {transfers} transfers + {events} events "
+                f"(blocks {from_block:,}-{to_block:,}) | gap remaining: {remaining:,}",
+                flush=True,
+            )
+
+            return mode, blocks_processed
     finally:
         await indexer.close()
 
 
 async def run_indexer_loop() -> None:
-    """Background loop that runs the indexer every INDEX_INTERVAL seconds."""
+    """Background loop that runs the indexer, auto-switching between backfill and realtime."""
     settings = get_settings()
 
     # Build RPC URL from Alchemy key
@@ -320,16 +361,34 @@ async def run_indexer_loop() -> None:
         return
 
     rpc_url = f"https://bnb-mainnet.g.alchemy.com/v2/{alchemy_key}"
-    print(f"[indexer] STARTED (interval={INDEX_INTERVAL}s, blocks/cycle={BLOCKS_PER_CYCLE})", flush=True)
-    logger.info("On-chain indexer started (interval=%ds, blocks/cycle=%d)", INDEX_INTERVAL, BLOCKS_PER_CYCLE)
+    print(
+        f"[indexer] STARTED "
+        f"(backfill={BACKFILL_CHUNK_SIZE}bl/{BACKFILL_INTERVAL}s, "
+        f"realtime={BLOCKS_PER_CYCLE}bl/{INDEX_INTERVAL}s)",
+        flush=True,
+    )
+    logger.info(
+        "On-chain indexer started (backfill=%d/%ds, realtime=%d/%ds)",
+        BACKFILL_CHUNK_SIZE, BACKFILL_INTERVAL,
+        BLOCKS_PER_CYCLE, INDEX_INTERVAL,
+    )
 
     while True:
         try:
-            await _index_cycle(rpc_url)
+            mode, blocks = await _index_cycle(rpc_url)
+            if mode == "caught_up":
+                # Nothing to do, wait for real-time interval
+                await asyncio.sleep(INDEX_INTERVAL)
+            elif mode == "backfill":
+                # Backfill mode: short pause, then keep going
+                await asyncio.sleep(BACKFILL_INTERVAL)
+            else:
+                # Realtime mode: normal interval
+                await asyncio.sleep(INDEX_INTERVAL)
         except Exception as exc:
             print(f"[indexer] CYCLE FAILED: {exc}", flush=True)
             logger.exception("Indexer cycle failed")
-        await asyncio.sleep(INDEX_INTERVAL)
+            await asyncio.sleep(INDEX_INTERVAL)
 
 
 # ---- Standalone entry point ----
