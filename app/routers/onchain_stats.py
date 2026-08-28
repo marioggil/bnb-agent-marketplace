@@ -213,21 +213,32 @@ async def get_global_trends(
 async def indexer_health(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
-    """Check indexer health: last indexed block and transfer count."""
-    from app.db.models.onchain_index import OnchainTransfer
+    """Check indexer health: last indexed block and counts for both tables."""
+    from app.db.models.onchain_index import OnchainTransfer, OnchainAgentEvent
 
-    result = await db.execute(
+    transfers = await db.execute(
         select(
             func.max(OnchainTransfer.block_number).label("last_block"),
-            func.count().label("total_transfers"),
+            func.count().label("total"),
         ).select_from(OnchainTransfer)
     )
-    row = result.one()
+    t_row = transfers.one()
+
+    events = await db.execute(
+        select(
+            func.max(OnchainAgentEvent.block_number).label("last_block"),
+            func.count().label("total"),
+        ).select_from(OnchainAgentEvent)
+    )
+    e_row = events.one()
+
+    last_block = max(t_row.last_block or 0, e_row.last_block or 0)
 
     return {
-        "last_block": row.last_block or 0,
-        "total_transfers": row.total_transfers or 0,
-        "status": "healthy" if row.last_block else "empty",
+        "last_block": last_block,
+        "transfers": t_row.total or 0,
+        "agent_events": e_row.total or 0,
+        "status": "healthy" if last_block else "empty",
     }
 
 
