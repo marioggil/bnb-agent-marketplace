@@ -215,10 +215,14 @@ async def indexer_health(
 ) -> dict:
     """Check indexer health: last indexed block and counts for both tables."""
     from app.db.models.onchain_index import OnchainTransfer, OnchainAgentEvent
+    from app.config import get_settings
+
+    settings = get_settings()
 
     transfers = await db.execute(
         select(
             func.max(OnchainTransfer.block_number).label("last_block"),
+            func.min(OnchainTransfer.block_number).label("first_block"),
             func.count().label("total"),
         ).select_from(OnchainTransfer)
     )
@@ -227,6 +231,7 @@ async def indexer_health(
     events = await db.execute(
         select(
             func.max(OnchainAgentEvent.block_number).label("last_block"),
+            func.min(OnchainAgentEvent.block_number).label("first_block"),
             func.count().label("total"),
         ).select_from(OnchainAgentEvent)
     )
@@ -237,8 +242,14 @@ async def indexer_health(
     return {
         "last_block": last_block,
         "transfers": t_row.total or 0,
+        "transfers_first_block": t_row.first_block,
         "agent_events": e_row.total or 0,
+        "events_first_block": e_row.first_block,
         "status": "healthy" if last_block else "empty",
+        "keys": {
+            "alchemy": "set" if getattr(settings, "alchemy_api_key", "") else "missing",
+            "chainstack": "set" if getattr(settings, "chainstack_api_key", "") else "missing",
+        },
     }
 
 
