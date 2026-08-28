@@ -47,6 +47,10 @@ TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523
 # $U token creation block on BSC
 U_TOKEN_CREATION_BLOCK = 71_922_111
 
+# First block with actual $U transfers (empirically determined).
+# The first ~200K blocks after creation have no transfers or NFT events.
+U_FIRST_TRANSFER_BLOCK = 72_122_100
+
 # Provider-specific block ranges for eth_getLogs
 ALCHEMY_MAX_BLOCK_RANGE = 10       # Alchemy free tier: 10 blocks per request
 CHAINSTACK_MAX_BLOCK_RANGE = 100   # Chainstack free tier: 100 blocks per request
@@ -293,11 +297,12 @@ async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
             """))
             db_max = result.scalar() or 0
             # If DB has blocks near the chain head (from realtime worker),
-            # start backfill from $U creation, not from there.
+            # start backfill from where transfers actually begin
+            # (empirically ~200K blocks after $U token creation).
             if db_max > U_TOKEN_CREATION_BLOCK + 1_000_000:
-                _backfill_last_scanned = U_TOKEN_CREATION_BLOCK - 1
+                _backfill_last_scanned = U_FIRST_TRANSFER_BLOCK - 1
             else:
-                _backfill_last_scanned = db_max if db_max > 0 else U_TOKEN_CREATION_BLOCK - 1
+                _backfill_last_scanned = db_max if db_max > 0 else U_FIRST_TRANSFER_BLOCK - 1
 
         from_block = _backfill_last_scanned + 1
         gap = current_block - from_block
