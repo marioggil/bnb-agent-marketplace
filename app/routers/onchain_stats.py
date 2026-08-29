@@ -461,4 +461,29 @@ async def debug_backfill() -> dict:
     return results
 
 
+@router.get("/backfill-state")
+async def backfill_state() -> dict:
+    """Show backfill worker state and DB state."""
+    from app.services.onchain_indexer import get_backfill_state
+    from app.db.session import get_sessionmaker
+    from sqlalchemy import text
+
+    state = get_backfill_state()
+    session_factory = get_sessionmaker()
+    async with session_factory() as session:
+        r1 = await session.execute(text("SELECT COALESCE(MAX(block_number), 0) FROM onchain_transfers"))
+        r2 = await session.execute(text("SELECT COUNT(*) FROM onchain_transfers"))
+        r3 = await session.execute(text("SELECT COALESCE(MAX(block_number), 0) FROM onchain_agent_events"))
+        db_transfers_max = r1.scalar()
+        db_transfers_count = r2.scalar()
+        db_events_max = r3.scalar()
+
+    return {
+        "backfill_last_scanned": state["last_scanned"],
+        "db_transfers_max_block": db_transfers_max,
+        "db_transfers_count": db_transfers_count,
+        "db_events_max_block": db_events_max,
+    }
+
+
 __all__ = ["router"]

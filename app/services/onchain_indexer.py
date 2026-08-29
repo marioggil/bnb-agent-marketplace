@@ -268,6 +268,11 @@ async def _scan_and_store(
 _backfill_last_scanned: int = 0
 
 
+def get_backfill_state() -> dict:
+    """Return current backfill state for diagnostics."""
+    return {"last_scanned": _backfill_last_scanned}
+
+
 async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
     """Run one backfill cycle: scan a chunk of historical blocks.
 
