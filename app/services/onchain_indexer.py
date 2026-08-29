@@ -258,6 +258,105 @@ async def _scan_and_store(
     return transfers_inserted, events_inserted
 
 
+async def _scan_and_store_direct(
+    rpc_url: str,
+    session,
+    from_block: int,
+    to_block: int,
+    wallet_to_agent: dict[str, str],
+    u_token: str,
+) -> tuple[int, int]:
+    """Scan and store using direct httpx calls (bypasses MultiRPCClient cooldown)."""
+    import httpx
+    from app.db.models.onchain_index import OnchainAgentEvent, OnchainTransfer
+
+    U_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+    MAX_RANGE = 10  # Alchemy free tier
+
+    async def _get_logs(address: str, topics: list, fb: int, tb: int) -> list:
+        async with httpx.AsyncClient(timeout=15.0) as hc:
+            r = await hc.post(rpc_url, json={
+                "jsonrpc": "2.0", "method": "eth_getLogs", "id": 1,
+                "params": [{"fromBlock": hex(fb), "toBlock": hex(tb),
+                           "address": address, "topics": topics}]
+            })
+            data = r.json()
+            if "result" in data and isinstance(data["result"], list):
+                return data["result"]
+            return []
+
+    async def _get_ts(block_num: int) -> datetime:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as hc:
+                r = await hc.post(rpc_url, json={
+                    "jsonrpc": "2.0", "method": "eth_getBlockByNumber",
+                    "params": [hex(block_num), False], "id": 1
+                })
+                data = r.json()
+                if data.get("result"):
+                    return datetime.fromtimestamp(int(data["result"]["timestamp"], 16), tz=timezone.utc)
+        except Exception:
+            pass
+        return datetime.now(timezone.utc)
+
+    # Scan $U transfers
+    transfers_inserted = 0
+    current = from_block
+    while current <= to_block:
+        batch_end = min(current + MAX_RANGE - 1, to_block)
+        logs = await _get_logs(u_token, [U_TOPIC, None, None], current, batch_end)
+        for log in logs:
+            from_addr = _extract_addr(log["topics"][1])
+            to_addr = _extract_addr(log["topics"][2])
+            value = Decimal(int(log["data"], 16)) / Decimal(10**18)
+            block_num = int(log["blockNumber"], 16)
+            tx = log["transactionHash"]
+            ts = await _get_ts(block_num)
+            linked_agent = wallet_to_agent.get(to_addr.lower())
+
+            stmt = pg_insert(OnchainTransfer).values(
+                from_address=from_addr, to_address=to_addr, value=value,
+                block_number=block_num, timestamp=ts, tx_hash=tx,
+                transfer_type="erc20_u", linked_agent_id=linked_agent,
+            )
+            stmt = stmt.on_conflict_do_nothing()
+            await session.execute(stmt)
+            transfers_inserted += 1
+        current = batch_end + 1
+        await asyncio.sleep(0.07)
+
+    # Scan NFT events
+    events_inserted = 0
+    current = from_block
+    while current <= to_block:
+        batch_end = min(current + MAX_RANGE - 1, to_block)
+        logs = await _get_logs(IDENTITY_REGISTRY, [U_TOPIC, None, None, None], current, batch_end)
+        for log in logs:
+            from_addr = _extract_addr(log["topics"][1])
+            to_addr = _extract_addr(log["topics"][2])
+            token_id = _extract_token_id(log["topics"][3])
+            block_num = int(log["blockNumber"], 16)
+            tx = log["transactionHash"]
+            ts = await _get_ts(block_num)
+            event_type = "mint" if from_addr == "0x" + "0" * 40 else "transfer"
+            from app.db.models.agent import BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id
+            agent_id = build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id)
+
+            stmt = pg_insert(OnchainAgentEvent).values(
+                agent_id=agent_id, token_id=token_id, event_type=event_type,
+                from_address=from_addr, to_address=to_addr, block_number=block_num,
+                timestamp=ts, tx_hash=tx,
+            )
+            stmt = stmt.on_conflict_do_nothing()
+            await session.execute(stmt)
+            events_inserted += 1
+        current = batch_end + 1
+        await asyncio.sleep(0.07)
+
+    await session.commit()
+    return transfers_inserted, events_inserted
+
+
 # ============================================================================
 # BACKFILL WORKER — uses Alchemy (only provider supporting historical eth_getLogs)
 # ============================================================================
@@ -276,13 +375,25 @@ def get_backfill_state() -> dict:
 async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
     """Run one backfill cycle: scan a chunk of historical blocks.
 
+    Uses httpx directly for Alchemy calls to avoid MultiRPCClient cooldown issues.
     Returns: (mode, blocks_processed)
     """
     global _backfill_last_scanned
+    import httpx
     settings = get_settings()
 
-    current_block = await get_current_block(client)
-    if current_block is None:
+    alchemy_key = getattr(settings, "alchemy_key", "") or getattr(settings, "alchemy_api_key", "")
+    if not alchemy_key:
+        return "error", 0
+
+    RPC = f"https://bnb-mainnet.g.alchemy.com/v2/{alchemy_key}"
+
+    # Get current block via direct httpx
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as hc:
+            r = await hc.post(RPC, json={"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1})
+            current_block = int(r.json()["result"], 16)
+    except Exception:
         return "error", 0
 
     session_factory = get_sessionmaker()
@@ -290,8 +401,6 @@ async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
         from sqlalchemy import text
 
         # Determine where to start.
-        # On first run (or after restart), seed from the DB's highest block
-        # so we don't re-scan blocks the realtime worker already handled.
         if _backfill_last_scanned == 0:
             result = await session.execute(text("""
                 SELECT COALESCE(
@@ -301,9 +410,6 @@ async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
                 )
             """))
             db_max = result.scalar() or 0
-            # If DB has blocks near the chain head (from realtime worker),
-            # start backfill from where transfers actually begin
-            # (empirically ~200K blocks after $U token creation).
             if db_max > U_TOKEN_CREATION_BLOCK + 1_000_000:
                 _backfill_last_scanned = U_FIRST_TRANSFER_BLOCK - 1
             else:
@@ -321,22 +427,20 @@ async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
         wallet_to_agent = await _resolve_agent_wallets(session)
         u_token = U_TOKEN_MAINNET if settings.x402_chain_id == 56 else U_TOKEN_TESTNET
 
-        transfers, events = await _scan_and_store(
-            client, session, from_block, to_block, wallet_to_agent, u_token,
-            max_range=ALCHEMY_MAX_BLOCK_RANGE,
+        # Direct scan using httpx (bypasses MultiRPCClient cooldown)
+        transfers, events = await _scan_and_store_direct(
+            RPC, session, from_block, to_block, wallet_to_agent, u_token,
         )
 
         blocks_processed = to_block - from_block + 1
         remaining = current_block - to_block
-        usage = client.get_usage_summary()
 
         # Advance the in-memory tracker
         _backfill_last_scanned = to_block
 
         print(
             f"[backfill] {transfers}T + {events}E "
-            f"({from_block:,}-{to_block:,}) | gap: {remaining:,} | "
-            f"Alchemy: {usage['usage']['alchemy']:,} CU",
+            f"({from_block:,}-{to_block:,}) | gap: {remaining:,}",
             flush=True,
         )
 
