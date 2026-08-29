@@ -273,85 +273,84 @@ async def _scan_and_store_direct(
     U_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
     MAX_RANGE = 10  # Alchemy free tier
 
-    async def _get_logs(address: str, topics: list, fb: int, tb: int) -> list:
-        async with httpx.AsyncClient(timeout=15.0) as hc:
-            r = await hc.post(rpc_url, json={
-                "jsonrpc": "2.0", "method": "eth_getLogs", "id": 1,
-                "params": [{"fromBlock": hex(fb), "toBlock": hex(tb),
-                           "address": address, "topics": topics}]
-            })
-            data = r.json()
-            if "result" in data and isinstance(data["result"], list):
+    async with httpx.AsyncClient(timeout=15.0) as hc:
+        async def _call(method: str, params: list) -> dict | None:
+            try:
+                r = await hc.post(rpc_url, json={
+                    "jsonrpc": "2.0", "method": method, "params": params, "id": 1
+                })
+                return r.json()
+            except Exception:
+                return None
+
+        async def _get_logs(address: str, topics: list, fb: int, tb: int) -> list:
+            data = await _call("eth_getLogs", [{
+                "fromBlock": hex(fb), "toBlock": hex(tb),
+                "address": address, "topics": topics
+            }])
+            if data and "result" in data and isinstance(data["result"], list):
                 return data["result"]
             return []
 
-    async def _get_ts(block_num: int) -> datetime:
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as hc:
-                r = await hc.post(rpc_url, json={
-                    "jsonrpc": "2.0", "method": "eth_getBlockByNumber",
-                    "params": [hex(block_num), False], "id": 1
-                })
-                data = r.json()
-                if data.get("result"):
-                    return datetime.fromtimestamp(int(data["result"]["timestamp"], 16), tz=timezone.utc)
-        except Exception:
-            pass
-        return datetime.now(timezone.utc)
+        async def _get_ts(block_num: int) -> datetime:
+            data = await _call("eth_getBlockByNumber", [hex(block_num), False])
+            if data and data.get("result"):
+                return datetime.fromtimestamp(int(data["result"]["timestamp"], 16), tz=timezone.utc)
+            return datetime.now(timezone.utc)
 
-    # Scan $U transfers
-    transfers_inserted = 0
-    current = from_block
-    while current <= to_block:
-        batch_end = min(current + MAX_RANGE - 1, to_block)
-        logs = await _get_logs(u_token, [U_TOPIC, None, None], current, batch_end)
-        for log in logs:
-            from_addr = _extract_addr(log["topics"][1])
-            to_addr = _extract_addr(log["topics"][2])
-            value = Decimal(int(log["data"], 16)) / Decimal(10**18)
-            block_num = int(log["blockNumber"], 16)
-            tx = log["transactionHash"]
-            ts = await _get_ts(block_num)
-            linked_agent = wallet_to_agent.get(to_addr.lower())
+        # Scan $U transfers
+        transfers_inserted = 0
+        current = from_block
+        while current <= to_block:
+            batch_end = min(current + MAX_RANGE - 1, to_block)
+            logs = await _get_logs(u_token, [U_TOPIC, None, None], current, batch_end)
+            for log in logs:
+                from_addr = _extract_addr(log["topics"][1])
+                to_addr = _extract_addr(log["topics"][2])
+                value = Decimal(int(log["data"], 16)) / Decimal(10**18)
+                block_num = int(log["blockNumber"], 16)
+                tx = log["transactionHash"]
+                ts = await _get_ts(block_num)
+                linked_agent = wallet_to_agent.get(to_addr.lower())
 
-            stmt = pg_insert(OnchainTransfer).values(
-                from_address=from_addr, to_address=to_addr, value=value,
-                block_number=block_num, timestamp=ts, tx_hash=tx,
-                transfer_type="erc20_u", linked_agent_id=linked_agent,
-            )
-            stmt = stmt.on_conflict_do_nothing()
-            await session.execute(stmt)
-            transfers_inserted += 1
-        current = batch_end + 1
-        await asyncio.sleep(0.07)
+                stmt = pg_insert(OnchainTransfer).values(
+                    from_address=from_addr, to_address=to_addr, value=value,
+                    block_number=block_num, timestamp=ts, tx_hash=tx,
+                    transfer_type="erc20_u", linked_agent_id=linked_agent,
+                )
+                stmt = stmt.on_conflict_do_nothing()
+                await session.execute(stmt)
+                transfers_inserted += 1
+            current = batch_end + 1
+            await asyncio.sleep(0.07)
 
-    # Scan NFT events
-    events_inserted = 0
-    current = from_block
-    while current <= to_block:
-        batch_end = min(current + MAX_RANGE - 1, to_block)
-        logs = await _get_logs(IDENTITY_REGISTRY, [U_TOPIC, None, None, None], current, batch_end)
-        for log in logs:
-            from_addr = _extract_addr(log["topics"][1])
-            to_addr = _extract_addr(log["topics"][2])
-            token_id = _extract_token_id(log["topics"][3])
-            block_num = int(log["blockNumber"], 16)
-            tx = log["transactionHash"]
-            ts = await _get_ts(block_num)
-            event_type = "mint" if from_addr == "0x" + "0" * 40 else "transfer"
-            from app.db.models.agent import BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id
-            agent_id = build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id)
+        # Scan NFT events
+        events_inserted = 0
+        current = from_block
+        while current <= to_block:
+            batch_end = min(current + MAX_RANGE - 1, to_block)
+            logs = await _get_logs(IDENTITY_REGISTRY, [U_TOPIC, None, None, None], current, batch_end)
+            for log in logs:
+                from_addr = _extract_addr(log["topics"][1])
+                to_addr = _extract_addr(log["topics"][2])
+                token_id = _extract_token_id(log["topics"][3])
+                block_num = int(log["blockNumber"], 16)
+                tx = log["transactionHash"]
+                ts = await _get_ts(block_num)
+                event_type = "mint" if from_addr == "0x" + "0" * 40 else "transfer"
+                from app.db.models.agent import BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id
+                agent_id = build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id)
 
-            stmt = pg_insert(OnchainAgentEvent).values(
-                agent_id=agent_id, token_id=token_id, event_type=event_type,
-                from_address=from_addr, to_address=to_addr, block_number=block_num,
-                timestamp=ts, tx_hash=tx,
-            )
-            stmt = stmt.on_conflict_do_nothing()
-            await session.execute(stmt)
-            events_inserted += 1
-        current = batch_end + 1
-        await asyncio.sleep(0.07)
+                stmt = pg_insert(OnchainAgentEvent).values(
+                    agent_id=agent_id, token_id=token_id, event_type=event_type,
+                    from_address=from_addr, to_address=to_addr, block_number=block_num,
+                    timestamp=ts, tx_hash=tx,
+                )
+                stmt = stmt.on_conflict_do_nothing()
+                await session.execute(stmt)
+                events_inserted += 1
+            current = batch_end + 1
+            await asyncio.sleep(0.07)
 
     await session.commit()
     return transfers_inserted, events_inserted
