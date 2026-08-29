@@ -365,66 +365,78 @@ async def test_block_transfers(
 
 @router.get("/debug-backfill")
 async def debug_backfill() -> dict:
-    """TEMP: Simulate what the backfill worker does to find the bug."""
-    import httpx
+    """TEMP: Execute backfill logic directly and return results."""
     from app.config import get_settings
+    from app.services.rpc_client import MultiRPCClient
+    from app.db.session import get_sessionmaker
 
     settings = get_settings()
-    alchemy_key = getattr(settings, "alchemy_api_key", "")
+    alchemy_key = getattr(settings, "alchemy_key", "") or getattr(settings, "alchemy_api_key", "")
+    chainstack_key = getattr(settings, "chainstack_api_key", "")
 
     if not alchemy_key:
-        return {"error": "no ALCHEMY_API_KEY"}
+        return {"error": "no ALCHEMY_API_KEY", "settings_keys": [k for k in dir(settings) if 'alchemy' in k.lower()]}
 
-    RPC = f"https://bnb-mainnet.g.alchemy.com/v2/{alchemy_key}"
-    U_TOKEN = "0xcE24439F2D9C6a2289F741120FE202248B666666"
-    TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+    client = MultiRPCClient(alchemy_key=alchemy_key, chainstack_api_key=chainstack_key)
 
     results = {}
 
-    # Test 1: Get current block
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as c:
-            r = await c.post(RPC, json={"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1})
-            results["current_block"] = int(r.json()["result"], 16)
-    except Exception as e:
-        results["current_block_error"] = str(e)[:100]
+    # Get current block
+    from app.services.onchain_indexer import get_current_block, scan_u_transfers, U_TOKEN_MAINNET
+    current = await get_current_block(client)
+    results["current_block"] = current
 
-    # Test 2: Direct eth_getLogs (same as test-block endpoint)
+    # Scan same range as backfill: 72,122,100 to 72,122,349 (250 blocks)
     try:
-        async with httpx.AsyncClient(timeout=10.0) as c:
-            r = await c.post(RPC, json={
-                "jsonrpc":"2.0", "method":"eth_getLogs", "id":1,
-                "params":[{"fromBlock": hex(72_122_100), "toBlock": hex(72_122_109),
-                           "address": U_TOKEN, "topics": [TRANSFER_TOPIC, None, None]}]
-            })
-            data = r.json()
-            if "result" in data:
-                results["direct_getlogs"] = len(data["result"])
-            elif "error" in data:
-                results["direct_getlogs_error"] = data["error"]
+        logs = await scan_u_transfers(client, 72_122_100, 72_122_349, U_TOKEN_MAINNET, max_range=10)
+        results["transfers_found"] = len(logs)
     except Exception as e:
-        results["direct_getlogs_error"] = str(e)[:100]
+        results["scan_error"] = str(e)[:200]
+        logs = []
 
-    # Test 3: Same but with max_range=10 (like backfill does)
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as c:
-            r = await c.post(RPC, json={
-                "jsonrpc":"2.0", "method":"eth_getLogs", "id":1,
-                "params":[{
-                    "fromBlock": hex(72_122_100),
-                    "toBlock": hex(72_122_100 + 10 - 1),  # max_range=10
-                    "address": U_TOKEN,
-                    "topics": [TRANSFER_TOPIC, None, None]
-                }]
-            })
-            data = r.json()
-            if "result" in data:
-                results["max_range_10"] = len(data["result"])
-            elif "error" in data:
-                results["max_range_10_error"] = data["error"]
-    except Exception as e:
-        results["max_range_10_error"] = str(e)[:100]
+    # Try to insert one into DB
+    if logs:
+        from decimal import Decimal
+        from datetime import datetime, timezone
+        from app.services.onchain_indexer import _extract_addr
 
+        log = logs[0]
+        from_addr = _extract_addr(log["topics"][1])
+        to_addr = _extract_addr(log["topics"][2])
+        value = Decimal(int(log["data"], 16)) / Decimal(10**18)
+        block_num = int(log["blockNumber"], 16)
+        tx = log["transactionHash"]
+
+        try:
+            session_factory = get_sessionmaker()
+            async with session_factory() as session:
+                from sqlalchemy.dialects.postgresql import insert as pg_insert
+                from app.db.models.onchain_index import OnchainTransfer
+
+                stmt = pg_insert(OnchainTransfer).values(
+                    from_address=from_addr,
+                    to_address=to_addr,
+                    value=value,
+                    block_number=block_num,
+                    timestamp=datetime.now(timezone.utc),
+                    tx_hash=tx,
+                    transfer_type="erc20_u",
+                    linked_agent_id=None,
+                )
+                stmt = stmt.on_conflict_do_nothing()
+                result = await session.execute(stmt)
+                await session.commit()
+                results["insert_test"] = {
+                    "rows_affected": result.rowcount,
+                    "from": from_addr,
+                    "to": to_addr,
+                    "value": str(value),
+                    "block": block_num,
+                }
+        except Exception as e:
+            results["insert_error"] = str(e)[:300]
+
+    await client.close()
     return results
 
 
