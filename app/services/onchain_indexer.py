@@ -324,11 +324,16 @@ async def _scan_and_store_direct(
             current = batch_end + 1
             await asyncio.sleep(0.07)
 
-        # Scan NFT events
+        # Commit transfers immediately — don't let NFT scan failures lose them
+        await session.commit()
+
+        # Scan NFT events (best effort — don't fail the whole cycle)
         events_inserted = 0
-        current = from_block
-        while current <= to_block:
-            batch_end = min(current + MAX_RANGE - 1, to_block)
+        try:
+            from app.db.models.agent import BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id
+            current = from_block
+            while current <= to_block:
+                batch_end = min(current + MAX_RANGE - 1, to_block)
             logs = await _get_logs(IDENTITY_REGISTRY, [U_TOPIC, None, None, None], current, batch_end)
             for log in logs:
                 from_addr = _extract_addr(log["topics"][1])
@@ -338,7 +343,6 @@ async def _scan_and_store_direct(
                 tx = log["transactionHash"]
                 ts = await _get_ts(block_num)
                 event_type = "mint" if from_addr == "0x" + "0" * 40 else "transfer"
-                from app.db.models.agent import BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id
                 agent_id = build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id)
 
                 stmt = pg_insert(OnchainAgentEvent).values(
@@ -351,8 +355,10 @@ async def _scan_and_store_direct(
                 events_inserted += 1
             current = batch_end + 1
             await asyncio.sleep(0.07)
+            await session.commit()
+        except Exception as e:
+            print(f"[backfill] NFT scan error (non-fatal): {e}", flush=True)
 
-    await session.commit()
     return transfers_inserted, events_inserted
 
 
