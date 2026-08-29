@@ -363,14 +363,16 @@ async def test_block_transfers(
     return results
 
 
-@router.get("/debug-scan")
-async def debug_scan() -> dict:
-    """TEMP: Run _scan_and_store_direct directly to test it."""
-    from app.config import get_settings
-    from app.db.session import get_sessionmaker
+@router.get("/index/{block_number}")
+async def index_block(block_number: int) -> dict:
+    """Index a single block: scan $U transfers + NFT events, insert into DB."""
+    import httpx
     from decimal import Decimal
     from datetime import datetime, timezone
-    import httpx
+    from app.config import get_settings
+    from app.db.session import get_sessionmaker
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from app.db.models.onchain_index import OnchainAgentEvent, OnchainTransfer
 
     settings = get_settings()
     alchemy_key = getattr(settings, "alchemy_key", "") or getattr(settings, "alchemy_api_key", "")
@@ -379,58 +381,79 @@ async def debug_scan() -> dict:
 
     RPC = f"https://bnb-mainnet.g.alchemy.com/v2/{alchemy_key}"
     U_TOKEN = "0xcE24439F2D9C6a2289F741120FE202248B666666"
+    IDENTITY_REGISTRY = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
     TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
-    results = {}
+    def addr(topic: str) -> str:
+        return "0x" + topic[-40:]
 
-    # Test: scan 10 blocks using same logic as _scan_and_store_direct
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as hc:
-            r = await hc.post(RPC, json={
-                "jsonrpc": "2.0", "method": "eth_getLogs", "id": 1,
-                "params": [{"fromBlock": hex(72_122_110), "toBlock": hex(72_122_119),
-                           "address": U_TOKEN, "topics": [TOPIC, None, None]}]
-            })
-            data = r.json()
-            if "result" in data:
-                logs = data["result"]
-                results["logs_found"] = len(logs)
-            else:
-                results["error"] = data.get("error", "unknown")
-                return results
-    except Exception as e:
-        results["error"] = str(e)[:200]
-        return results
+    async def get_logs(hc, address, topics):
+        r = await hc.post(RPC, json={
+            "jsonrpc": "2.0", "method": "eth_getLogs", "id": 1,
+            "params": [{"fromBlock": hex(block_number), "toBlock": hex(block_number),
+                       "address": address, "topics": topics}]
+        })
+        data = r.json()
+        return data.get("result", []) if isinstance(data.get("result"), list) else []
 
-    # Insert into DB
-    if logs:
-        from app.db.session import get_sessionmaker
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
-        from app.db.models.onchain_index import OnchainTransfer
+    async def get_ts(hc):
+        r = await hc.post(RPC, json={
+            "jsonrpc": "2.0", "method": "eth_getBlockByNumber",
+            "params": [hex(block_number), False], "id": 1
+        })
+        data = r.json()
+        if data.get("result"):
+            return datetime.fromtimestamp(int(data["result"]["timestamp"], 16), tz=timezone.utc)
+        return datetime.now(timezone.utc)
 
+    result = {"block": block_number, "transfers": 0, "events": 0, "transfer_details": [], "event_details": []}
+
+    async with httpx.AsyncClient(timeout=15.0) as hc:
+        ts = await get_ts(hc)
+
+        # $U transfers
+        u_logs = await get_logs(hc, U_TOKEN, [TOPIC, None, None])
         session_factory = get_sessionmaker()
         async with session_factory() as session:
-            inserted = 0
-            for log in logs:
-                from_addr = "0x" + log["topics"][1][-40:]
-                to_addr = "0x" + log["topics"][2][-40:]
+            for log in u_logs:
+                from_addr = addr(log["topics"][1])
+                to_addr = addr(log["topics"][2])
                 value = Decimal(int(log["data"], 16)) / Decimal(10**18)
-                block_num = int(log["blockNumber"], 16)
                 tx = log["transactionHash"]
 
                 stmt = pg_insert(OnchainTransfer).values(
                     from_address=from_addr, to_address=to_addr, value=value,
-                    block_number=block_num, timestamp=datetime.now(timezone.utc),
-                    tx_hash=tx, transfer_type="erc20_u", linked_agent_id=None,
-                )
-                stmt = stmt.on_conflict_do_nothing()
-                r = await session.execute(stmt)
-                inserted += r.rowcount
+                    block_number=block_number, timestamp=ts, tx_hash=tx,
+                    transfer_type="erc20_u", linked_agent_id=None,
+                ).on_conflict_do_nothing()
+                await session.execute(stmt)
+                result["transfers"] += 1
+                result["transfer_details"].append({"from": from_addr, "to": to_addr, "value": str(value)})
             await session.commit()
-            results["inserted"] = inserted
-            results["total_logs"] = len(logs)
 
-    return results
+        # NFT events
+        nft_logs = await get_logs(hc, IDENTITY_REGISTRY, [TOPIC, None, None, None])
+        async with session_factory() as session:
+            from app.db.models.agent import BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id
+            for log in nft_logs:
+                from_addr = addr(log["topics"][1])
+                to_addr = addr(log["topics"][2])
+                token_id = int(log["topics"][3], 16)
+                tx = log["transactionHash"]
+                event_type = "mint" if from_addr == "0x" + "0" * 40 else "transfer"
+                agent_id = build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id)
+
+                stmt = pg_insert(OnchainAgentEvent).values(
+                    agent_id=agent_id, token_id=token_id, event_type=event_type,
+                    from_address=from_addr, to_address=to_addr, block_number=block_number,
+                    timestamp=ts, tx_hash=tx,
+                ).on_conflict_do_nothing()
+                await session.execute(stmt)
+                result["events"] += 1
+                result["event_details"].append({"agent": agent_id, "type": event_type, "from": from_addr, "to": to_addr})
+            await session.commit()
+
+    return result
 
 
 @router.get("/backfill-state")
