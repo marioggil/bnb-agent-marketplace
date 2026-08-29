@@ -366,53 +366,75 @@ async def test_block_transfers(
 @router.get("/debug-backfill")
 async def debug_backfill() -> dict:
     """TEMP: Execute backfill logic directly and return results."""
+    import httpx
+    from decimal import Decimal
+    from datetime import datetime, timezone
     from app.config import get_settings
-    from app.services.rpc_client import MultiRPCClient
-    from app.db.session import get_sessionmaker
 
     settings = get_settings()
     alchemy_key = getattr(settings, "alchemy_key", "") or getattr(settings, "alchemy_api_key", "")
-    chainstack_key = getattr(settings, "chainstack_api_key", "")
 
     if not alchemy_key:
-        return {"error": "no ALCHEMY_API_KEY", "settings_keys": [k for k in dir(settings) if 'alchemy' in k.lower()]}
+        return {"error": "no ALCHEMY_API_KEY"}
 
-    client = MultiRPCClient(alchemy_key=alchemy_key, chainstack_api_key=chainstack_key)
+    RPC = f"https://bnb-mainnet.g.alchemy.com/v2/{alchemy_key}"
+    U_TOKEN = "0xcE24439F2D9C6a2289F741120FE202248B666666"
+    TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
     results = {}
 
-    # Get current block
-    from app.services.onchain_indexer import get_current_block, scan_u_transfers, U_TOKEN_MAINNET
-    current = await get_current_block(client)
-    results["current_block"] = current
-
-    # Scan same range as backfill: 72,122,100 to 72,122,349 (250 blocks)
+    # Test 1: Get current block
     try:
-        logs = await scan_u_transfers(client, 72_122_100, 72_122_349, U_TOKEN_MAINNET, max_range=10)
-        results["transfers_found"] = len(logs)
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            r = await c.post(RPC, json={"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1})
+            results["current_block"] = int(r.json()["result"], 16)
     except Exception as e:
-        results["scan_error"] = str(e)[:200]
-        logs = []
+        results["current_block_error"] = str(e)[:100]
 
-    # Try to insert one into DB
-    if logs:
-        from decimal import Decimal
-        from datetime import datetime, timezone
-        from app.services.onchain_indexer import _extract_addr
+    # Test 2: Scan 10 blocks from backfill start point
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            r = await c.post(RPC, json={
+                "jsonrpc":"2.0", "method":"eth_getLogs", "id":1,
+                "params":[{
+                    "fromBlock": hex(72_122_100),
+                    "toBlock": hex(72_122_109),
+                    "address": U_TOKEN,
+                    "topics": [TOPIC, None, None]
+                }]
+            })
+            data = r.json()
+            if "result" in data:
+                logs = data["result"]
+                results["transfers_found"] = len(logs)
+                if logs:
+                    log = logs[0]
+                    results["sample"] = {
+                        "from": "0x" + log["topics"][1][-40:],
+                        "to": "0x" + log["topics"][2][-40:],
+                        "block": int(log["blockNumber"], 16),
+                    }
+            elif "error" in data:
+                results["getlogs_error"] = data["error"]
+    except Exception as e:
+        results["getlogs_error"] = str(e)[:100]
 
-        log = logs[0]
-        from_addr = _extract_addr(log["topics"][1])
-        to_addr = _extract_addr(log["topics"][2])
-        value = Decimal(int(log["data"], 16)) / Decimal(10**18)
-        block_num = int(log["blockNumber"], 16)
-        tx = log["transactionHash"]
-
+    # Test 3: Insert ONE transfer into DB
+    if results.get("transfers_found", 0) > 0:
         try:
+            from app.db.session import get_sessionmaker
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+            from app.db.models.onchain_index import OnchainTransfer
+
+            log = logs[0]
+            from_addr = "0x" + log["topics"][1][-40:]
+            to_addr = "0x" + log["topics"][2][-40:]
+            value = Decimal(int(log["data"], 16)) / Decimal(10**18)
+            block_num = int(log["blockNumber"], 16)
+            tx = log["transactionHash"]
+
             session_factory = get_sessionmaker()
             async with session_factory() as session:
-                from sqlalchemy.dialects.postgresql import insert as pg_insert
-                from app.db.models.onchain_index import OnchainTransfer
-
                 stmt = pg_insert(OnchainTransfer).values(
                     from_address=from_addr,
                     to_address=to_addr,
@@ -436,7 +458,6 @@ async def debug_backfill() -> dict:
         except Exception as e:
             results["insert_error"] = str(e)[:300]
 
-    await client.close()
     return results
 
 
