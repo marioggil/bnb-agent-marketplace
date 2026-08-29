@@ -363,4 +363,52 @@ async def test_block_transfers(
     return results
 
 
+@router.get("/debug-backfill")
+async def debug_backfill() -> dict:
+    """TEMP: Simulate what the backfill worker does to find the bug."""
+    import httpx
+    from app.config import get_settings
+    from app.services.rpc_client import MultiRPCClient
+
+    settings = get_settings()
+    alchemy_key = getattr(settings, "alchemy_api_key", "")
+    chainstack_key = getattr(settings, "chainstack_api_key", "")
+
+    if not alchemy_key:
+        return {"error": "no ALCHEMY_API_KEY"}
+
+    # Create same client as backfill
+    client = MultiRPCClient(alchemy_key=alchemy_key, chainstack_api_key=chainstack_key)
+
+    # Test 1: Can we get current block?
+    from app.services.onchain_indexer import get_current_block, scan_u_transfers, U_TOKEN_MAINNET
+    current = await get_current_block(client)
+    results = {"current_block": current}
+
+    # Test 2: Scan a known block range (72,122,100 - 72,122,109)
+    try:
+        logs = await scan_u_transfers(client, 72_122_100, 72_122_109, U_TOKEN_MAINNET, max_range=10)
+        results["scan_result"] = {
+            "transfers_found": len(logs),
+            "sample": [
+                {
+                    "from": "0x" + log["topics"][1][-40:],
+                    "to": "0x" + log["topics"][2][-40:],
+                    "block": int(log["blockNumber"], 16),
+                }
+                for log in logs[:3]
+            ] if logs else []
+        }
+    except Exception as e:
+        results["scan_error"] = str(e)[:200]
+
+    # Test 3: Check client health
+    results["client_health"] = client._health
+
+    # Test 4: Check usage
+    results["usage"] = client.get_usage_summary()
+
+    return results
+
+
 __all__ = ["router"]
