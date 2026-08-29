@@ -334,27 +334,27 @@ async def _scan_and_store_direct(
             current = from_block
             while current <= to_block:
                 batch_end = min(current + MAX_RANGE - 1, to_block)
-            logs = await _get_logs(IDENTITY_REGISTRY, [U_TOPIC, None, None, None], current, batch_end)
-            for log in logs:
-                from_addr = _extract_addr(log["topics"][1])
-                to_addr = _extract_addr(log["topics"][2])
-                token_id = _extract_token_id(log["topics"][3])
-                block_num = int(log["blockNumber"], 16)
-                tx = log["transactionHash"]
-                ts = await _get_ts(block_num)
-                event_type = "mint" if from_addr == "0x" + "0" * 40 else "transfer"
-                agent_id = build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id)
+                logs = await _get_logs(IDENTITY_REGISTRY, [U_TOPIC, None, None, None], current, batch_end)
+                for log in logs:
+                    from_addr = _extract_addr(log["topics"][1])
+                    to_addr = _extract_addr(log["topics"][2])
+                    token_id = _extract_token_id(log["topics"][3])
+                    block_num = int(log["blockNumber"], 16)
+                    tx = log["transactionHash"]
+                    ts = await _get_ts(block_num)
+                    event_type = "mint" if from_addr == "0x" + "0" * 40 else "transfer"
+                    agent_id = build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id)
 
-                stmt = pg_insert(OnchainAgentEvent).values(
-                    agent_id=agent_id, token_id=token_id, event_type=event_type,
-                    from_address=from_addr, to_address=to_addr, block_number=block_num,
-                    timestamp=ts, tx_hash=tx,
-                )
-                stmt = stmt.on_conflict_do_nothing()
-                await session.execute(stmt)
-                events_inserted += 1
-            current = batch_end + 1
-            await asyncio.sleep(0.07)
+                    stmt = pg_insert(OnchainAgentEvent).values(
+                        agent_id=agent_id, token_id=token_id, event_type=event_type,
+                        from_address=from_addr, to_address=to_addr, block_number=block_num,
+                        timestamp=ts, tx_hash=tx,
+                    )
+                    stmt = stmt.on_conflict_do_nothing()
+                    await session.execute(stmt)
+                    events_inserted += 1
+                current = batch_end + 1
+                await asyncio.sleep(0.07)
             await session.commit()
         except Exception as e:
             print(f"[backfill] NFT scan error (non-fatal): {e}", flush=True)
