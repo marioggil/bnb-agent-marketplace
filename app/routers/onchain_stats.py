@@ -363,19 +363,19 @@ async def test_block_transfers(
     return results
 
 
-@router.get("/debug-backfill")
-async def debug_backfill() -> dict:
-    """TEMP: Execute backfill logic directly and return results."""
-    import httpx
+@router.get("/debug-scan")
+async def debug_scan() -> dict:
+    """TEMP: Run _scan_and_store_direct directly to test it."""
+    from app.config import get_settings
+    from app.db.session import get_sessionmaker
     from decimal import Decimal
     from datetime import datetime, timezone
-    from app.config import get_settings
+    import httpx
 
     settings = get_settings()
     alchemy_key = getattr(settings, "alchemy_key", "") or getattr(settings, "alchemy_api_key", "")
-
     if not alchemy_key:
-        return {"error": "no ALCHEMY_API_KEY"}
+        return {"error": "no key"}
 
     RPC = f"https://bnb-mainnet.g.alchemy.com/v2/{alchemy_key}"
     U_TOKEN = "0xcE24439F2D9C6a2289F741120FE202248B666666"
@@ -383,80 +383,52 @@ async def debug_backfill() -> dict:
 
     results = {}
 
-    # Test 1: Get current block
+    # Test: scan 10 blocks using same logic as _scan_and_store_direct
     try:
-        async with httpx.AsyncClient(timeout=10.0) as c:
-            r = await c.post(RPC, json={"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1})
-            results["current_block"] = int(r.json()["result"], 16)
-    except Exception as e:
-        results["current_block_error"] = str(e)[:100]
-
-    # Test 2: Scan 10 blocks from backfill start point
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as c:
-            r = await c.post(RPC, json={
-                "jsonrpc":"2.0", "method":"eth_getLogs", "id":1,
-                "params":[{
-                    "fromBlock": hex(72_122_100),
-                    "toBlock": hex(72_122_109),
-                    "address": U_TOKEN,
-                    "topics": [TOPIC, None, None]
-                }]
+        async with httpx.AsyncClient(timeout=15.0) as hc:
+            r = await hc.post(RPC, json={
+                "jsonrpc": "2.0", "method": "eth_getLogs", "id": 1,
+                "params": [{"fromBlock": hex(72_122_110), "toBlock": hex(72_122_119),
+                           "address": U_TOKEN, "topics": [TOPIC, None, None]}]
             })
             data = r.json()
             if "result" in data:
                 logs = data["result"]
-                results["transfers_found"] = len(logs)
-                if logs:
-                    log = logs[0]
-                    results["sample"] = {
-                        "from": "0x" + log["topics"][1][-40:],
-                        "to": "0x" + log["topics"][2][-40:],
-                        "block": int(log["blockNumber"], 16),
-                    }
-            elif "error" in data:
-                results["getlogs_error"] = data["error"]
+                results["logs_found"] = len(logs)
+            else:
+                results["error"] = data.get("error", "unknown")
+                return results
     except Exception as e:
-        results["getlogs_error"] = str(e)[:100]
+        results["error"] = str(e)[:200]
+        return results
 
-    # Test 3: Insert ONE transfer into DB
-    if results.get("transfers_found", 0) > 0:
-        try:
-            from app.db.session import get_sessionmaker
-            from sqlalchemy.dialects.postgresql import insert as pg_insert
-            from app.db.models.onchain_index import OnchainTransfer
+    # Insert into DB
+    if logs:
+        from app.db.session import get_sessionmaker
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        from app.db.models.onchain_index import OnchainTransfer
 
-            log = logs[0]
-            from_addr = "0x" + log["topics"][1][-40:]
-            to_addr = "0x" + log["topics"][2][-40:]
-            value = Decimal(int(log["data"], 16)) / Decimal(10**18)
-            block_num = int(log["blockNumber"], 16)
-            tx = log["transactionHash"]
+        session_factory = get_sessionmaker()
+        async with session_factory() as session:
+            inserted = 0
+            for log in logs:
+                from_addr = "0x" + log["topics"][1][-40:]
+                to_addr = "0x" + log["topics"][2][-40:]
+                value = Decimal(int(log["data"], 16)) / Decimal(10**18)
+                block_num = int(log["blockNumber"], 16)
+                tx = log["transactionHash"]
 
-            session_factory = get_sessionmaker()
-            async with session_factory() as session:
                 stmt = pg_insert(OnchainTransfer).values(
-                    from_address=from_addr,
-                    to_address=to_addr,
-                    value=value,
-                    block_number=block_num,
-                    timestamp=datetime.now(timezone.utc),
-                    tx_hash=tx,
-                    transfer_type="erc20_u",
-                    linked_agent_id=None,
+                    from_address=from_addr, to_address=to_addr, value=value,
+                    block_number=block_num, timestamp=datetime.now(timezone.utc),
+                    tx_hash=tx, transfer_type="erc20_u", linked_agent_id=None,
                 )
                 stmt = stmt.on_conflict_do_nothing()
-                result = await session.execute(stmt)
-                await session.commit()
-                results["insert_test"] = {
-                    "rows_affected": result.rowcount,
-                    "from": from_addr,
-                    "to": to_addr,
-                    "value": str(value),
-                    "block": block_num,
-                }
-        except Exception as e:
-            results["insert_error"] = str(e)[:300]
+                r = await session.execute(stmt)
+                inserted += r.rowcount
+            await session.commit()
+            results["inserted"] = inserted
+            results["total_logs"] = len(logs)
 
     return results
 
