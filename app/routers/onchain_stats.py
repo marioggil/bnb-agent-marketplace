@@ -368,45 +368,62 @@ async def debug_backfill() -> dict:
     """TEMP: Simulate what the backfill worker does to find the bug."""
     import httpx
     from app.config import get_settings
-    from app.services.rpc_client import MultiRPCClient
 
     settings = get_settings()
     alchemy_key = getattr(settings, "alchemy_api_key", "")
-    chainstack_key = getattr(settings, "chainstack_api_key", "")
 
     if not alchemy_key:
         return {"error": "no ALCHEMY_API_KEY"}
 
-    # Create same client as backfill
-    client = MultiRPCClient(alchemy_key=alchemy_key, chainstack_api_key=chainstack_key)
+    RPC = f"https://bnb-mainnet.g.alchemy.com/v2/{alchemy_key}"
+    U_TOKEN = "0xcE24439F2D9C6a2289F741120FE202248B666666"
+    TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
-    # Test 1: Can we get current block?
-    from app.services.onchain_indexer import get_current_block, scan_u_transfers, U_TOKEN_MAINNET
-    current = await get_current_block(client)
-    results = {"current_block": current}
+    results = {}
 
-    # Test 2: Scan a known block range (72,122,100 - 72,122,109)
+    # Test 1: Get current block
     try:
-        logs = await scan_u_transfers(client, 72_122_100, 72_122_109, U_TOKEN_MAINNET, max_range=10)
-        results["scan_result"] = {
-            "transfers_found": len(logs),
-            "sample": [
-                {
-                    "from": "0x" + log["topics"][1][-40:],
-                    "to": "0x" + log["topics"][2][-40:],
-                    "block": int(log["blockNumber"], 16),
-                }
-                for log in logs[:3]
-            ] if logs else []
-        }
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            r = await c.post(RPC, json={"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1})
+            results["current_block"] = int(r.json()["result"], 16)
     except Exception as e:
-        results["scan_error"] = str(e)[:200]
+        results["current_block_error"] = str(e)[:100]
 
-    # Test 3: Check client health
-    results["client_health"] = client._health
+    # Test 2: Direct eth_getLogs (same as test-block endpoint)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            r = await c.post(RPC, json={
+                "jsonrpc":"2.0", "method":"eth_getLogs", "id":1,
+                "params":[{"fromBlock": hex(72_122_100), "toBlock": hex(72_122_109),
+                           "address": U_TOKEN, "topics": [TRANSFER_TOPIC, None, None]}]
+            })
+            data = r.json()
+            if "result" in data:
+                results["direct_getlogs"] = len(data["result"])
+            elif "error" in data:
+                results["direct_getlogs_error"] = data["error"]
+    except Exception as e:
+        results["direct_getlogs_error"] = str(e)[:100]
 
-    # Test 4: Check usage
-    results["usage"] = client.get_usage_summary()
+    # Test 3: Same but with max_range=10 (like backfill does)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            r = await c.post(RPC, json={
+                "jsonrpc":"2.0", "method":"eth_getLogs", "id":1,
+                "params":[{
+                    "fromBlock": hex(72_122_100),
+                    "toBlock": hex(72_122_100 + 10 - 1),  # max_range=10
+                    "address": U_TOKEN,
+                    "topics": [TRANSFER_TOPIC, None, None]
+                }]
+            })
+            data = r.json()
+            if "result" in data:
+                results["max_range_10"] = len(data["result"])
+            elif "error" in data:
+                results["max_range_10_error"] = data["error"]
+    except Exception as e:
+        results["max_range_10_error"] = str(e)[:100]
 
     return results
 
