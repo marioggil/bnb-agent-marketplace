@@ -411,24 +411,38 @@ async def index_block(block_number: int) -> dict:
     async with httpx.AsyncClient(timeout=15.0) as hc:
         ts = await get_ts(hc)
 
+        # Build wallet -> agent mapping for linking transfers
+        from sqlalchemy import select as sa_select
+        from app.db.models.agent import AgentCache
+
+        session_factory = get_sessionmaker()
+        wallet_to_agent: dict[str, str] = {}
+        async with session_factory() as sess:
+            rows = await sess.execute(
+                sa_select(AgentCache.agent_wallet, AgentCache.agent_id).where(
+                    AgentCache.agent_wallet.isnot(None)
+                )
+            )
+            wallet_to_agent = {r[0].lower(): r[1] for r in rows.all()}
+
         # $U transfers
         u_logs = await get_logs(hc, U_TOKEN, [TOPIC, None, None])
-        session_factory = get_sessionmaker()
         async with session_factory() as session:
             for log in u_logs:
                 from_addr = addr(log["topics"][1])
                 to_addr = addr(log["topics"][2])
                 value = Decimal(int(log["data"], 16)) / Decimal(10**18)
                 tx = log["transactionHash"]
+                linked_agent = wallet_to_agent.get(to_addr.lower())
 
                 stmt = pg_insert(OnchainTransfer).values(
                     from_address=from_addr, to_address=to_addr, value=value,
                     block_number=block_number, timestamp=ts, tx_hash=tx,
-                    transfer_type="erc20_u", linked_agent_id=None,
+                    transfer_type="erc20_u", linked_agent_id=linked_agent,
                 ).on_conflict_do_nothing()
                 await session.execute(stmt)
                 result["transfers"] += 1
-                result["transfer_details"].append({"from": from_addr, "to": to_addr, "value": str(value)})
+                result["transfer_details"].append({"from": from_addr, "to": to_addr, "value": str(value), "agent": linked_agent})
             await session.commit()
 
         # NFT events
@@ -478,6 +492,52 @@ async def backfill_state() -> dict:
         "db_transfers_max_block": db_transfers_max,
         "db_transfers_count": db_transfers_count,
         "db_events_max_block": db_events_max,
+    }
+
+
+@router.get("/backfill-link-agents")
+async def backfill_link_agents() -> dict:
+    """Link existing transfers to agents by matching to_address with agent wallets."""
+    from app.db.models.agent import AgentCache
+    from app.db.models.onchain_index import OnchainTransfer
+    from app.db.session import get_sessionmaker
+    from sqlalchemy import update
+
+    session_factory = get_sessionmaker()
+    async with session_factory() as session:
+        # Build wallet -> agent mapping
+        rows = await session.execute(
+            select(AgentCache.agent_wallet, AgentCache.agent_id).where(
+                AgentCache.agent_wallet.isnot(None)
+            )
+        )
+        wallet_to_agent = {r[0].lower(): r[1] for r in rows.all()}
+
+        # Get all unlinked transfers
+        result = await session.execute(
+            select(OnchainTransfer.id, OnchainTransfer.to_address).where(
+                OnchainTransfer.linked_agent_id.is_(None)
+            )
+        )
+        unlinked = result.all()
+
+        linked = 0
+        for transfer_id, to_address in unlinked:
+            agent_id = wallet_to_agent.get(to_address.lower())
+            if agent_id:
+                await session.execute(
+                    update(OnchainTransfer)
+                    .where(OnchainTransfer.id == transfer_id)
+                    .values(linked_agent_id=agent_id)
+                )
+                linked += 1
+
+        await session.commit()
+
+    return {
+        "unlinked_total": len(unlinked),
+        "linked_now": linked,
+        "wallets_known": len(wallet_to_agent),
     }
 
 
