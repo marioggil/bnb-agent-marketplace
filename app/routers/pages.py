@@ -559,6 +559,39 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
         mcp_info = await fetch_mcp_info(mcp_endpoint)
 
     hires = await _hires_count([row.agent_id])
+
+    # On-chain metrics from indexed DB
+    onchain_stats = {"transfers": 0, "volume": "0", "events": 0}
+    try:
+        from app.db.models.onchain_index import OnchainTransfer, OnchainAgentEvent
+
+        async with AsyncSessionLocal() as ocs:
+            # $U transfers received by this agent
+            from sqlalchemy import func
+
+            t_result = await ocs.execute(
+                select(
+                    func.count().label("total"),
+                    func.coalesce(func.sum(OnchainTransfer.value), 0).label("volume"),
+                ).where(
+                    OnchainTransfer.linked_agent_id == row.agent_id,
+                    OnchainTransfer.transfer_type == "erc20_u",
+                )
+            )
+            t_row = t_result.one()
+            onchain_stats["transfers"] = t_row.total or 0
+            onchain_stats["volume"] = str(t_row.volume or 0)
+
+            # Agent NFT events (mints + transfers)
+            e_result = await ocs.execute(
+                select(func.count()).where(
+                    OnchainAgentEvent.agent_id == row.agent_id,
+                )
+            )
+            onchain_stats["events"] = e_result.scalar() or 0
+    except Exception:
+        logger.warning("Failed to fetch onchain stats for %s", row.agent_id, exc_info=True)
+
     return _render(
         request,
         "pages/agent_detail.html",
@@ -571,6 +604,7 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             "termix_card": termix_card,
             "evoevo_card": evoevo_card,
             "mcp_info": mcp_info,
+            "onchain_stats": onchain_stats,
         },
     )
 

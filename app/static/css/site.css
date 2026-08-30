@@ -687,34 +687,29 @@ header nav .user-address { color: var(--color-text); cursor: default; }
   color: var(--color-text-secondary);
 }
 
-/* On-chain hire verification */
-.onchain-verify-btn {
-  margin-left: var(--space-2);
-  padding: 2px 8px;
+/* On-chain metrics */
+.onchain-metrics {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.onchain-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 60px;
+}
+.onchain-metric-value {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+.onchain-metric-label {
   font-size: var(--text-xs);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: transparent;
   color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.onchain-verify-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-.onchain-verify-btn:disabled,
-.onchain-verify-btn[aria-busy="true"] {
-  opacity: 0.6;
-  cursor: wait;
-}
-.onchain-verify-btn.verified {
-  border-color: var(--color-success);
-  color: var(--color-success);
-}
-.onchain-hire-result {
-  margin-left: var(--space-2);
-  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 .text-muted {
   color: var(--color-text-secondary);
