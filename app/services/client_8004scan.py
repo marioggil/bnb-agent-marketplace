@@ -436,7 +436,7 @@ class Client8004Scan:
             # 8004scan wraps every response in `{"success": true, "data": ...}`.
             # Accept that, plus the historical {items:[]} / {agents:[]} forms,
             # and a top-level list.
-            items: list[dict[str, Any]]
+            items: list[Any]
             if isinstance(data, list):
                 items = data
             elif isinstance(data, dict):
@@ -455,6 +455,10 @@ class Client8004Scan:
             if not items:
                 return
             for payload in items:
+                # Elements come from unvalidated response.json() (Any); skip
+                # anything that is not a dict instead of crashing on .get().
+                if not isinstance(payload, dict):
+                    continue
                 # Client-side chain filter (R2).
                 row_chain = payload.get("chain_id")
                 try:
