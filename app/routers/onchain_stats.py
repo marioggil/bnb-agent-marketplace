@@ -215,9 +215,10 @@ async def indexer_health(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     """Check indexer health: last indexed block and counts for both tables."""
-    from app.db.models.onchain_index import OnchainTransfer, OnchainAgentEvent
-    from app.config import get_settings
     import httpx
+
+    from app.config import get_settings
+    from app.db.models.onchain_index import OnchainAgentEvent, OnchainTransfer
 
     settings = get_settings()
 
@@ -282,8 +283,9 @@ async def test_block_transfers(
     block_number: int,
 ) -> dict:
     """TEMP: Test if Alchemy can see $U transfers at a specific block."""
-    from app.config import get_settings
     import httpx
+
+    from app.config import get_settings
 
     settings = get_settings()
     alchemy_key = getattr(settings, "alchemy_api_key", "")
@@ -371,13 +373,14 @@ async def test_block_transfers(
 @router.get("/index/{block_number}")
 async def index_block(block_number: int) -> dict:
     """Index a single block: scan $U transfers + NFT events, insert into DB."""
-    import httpx
-    from decimal import Decimal
     from datetime import datetime, timezone
-    from app.config import get_settings
-    from app.db.session import get_sessionmaker
+
+    import httpx
     from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from app.config import get_settings
     from app.db.models.onchain_index import OnchainAgentEvent, OnchainTransfer
+    from app.db.session import get_sessionmaker
 
     settings = get_settings()
     alchemy_key = getattr(settings, "alchemy_key", "") or getattr(settings, "alchemy_api_key", "")
@@ -440,6 +443,7 @@ async def index_block(block_number: int) -> dict:
 
         # Build wallet -> agent mapping for linking transfers
         from sqlalchemy import select as sa_select
+
         from app.db.models.agent import AgentCache
 
         session_factory = get_sessionmaker()
@@ -523,9 +527,10 @@ async def index_block(block_number: int) -> dict:
 @router.get("/backfill-state")
 async def backfill_state() -> dict:
     """Show backfill worker state and DB state."""
-    from app.services.onchain_indexer import get_backfill_state
-    from app.db.session import get_sessionmaker
     from sqlalchemy import text
+
+    from app.db.session import get_sessionmaker
+    from app.services.onchain_indexer import get_backfill_state
 
     state = get_backfill_state()
     session_factory = get_sessionmaker()
@@ -552,10 +557,11 @@ async def backfill_state() -> dict:
 @router.get("/backfill-link-agents")
 async def backfill_link_agents() -> dict:
     """Link existing transfers to agents by matching to_address with agent wallets."""
+    from sqlalchemy import update
+
     from app.db.models.agent import AgentCache
     from app.db.models.onchain_index import OnchainTransfer
     from app.db.session import get_sessionmaker
-    from sqlalchemy import update
 
     session_factory = get_sessionmaker()
     async with session_factory() as session:

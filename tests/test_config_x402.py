@@ -16,7 +16,6 @@ from app.config import (
     X402_U_TOKEN_ADDRESS_TESTNET,
     Settings,
     _settings_cache,
-    get_settings,
 )
 
 

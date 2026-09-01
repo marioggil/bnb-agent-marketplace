@@ -31,14 +31,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.agent import (
-    AgentCache,
     BSC_CHAIN_ID,
     BSC_IDENTITY_REGISTRY,
+    AgentCache,
     build_agent_id,
 )
 from app.db.models.sync_state import FAILED_TOKEN_IDS_CAP, SyncState
@@ -117,7 +117,8 @@ async def _record_failure(session: AsyncSession, state: SyncState, token_id: int
     """
     state.failed_token_ids = await session.scalar(
         text(
-            "SELECT COALESCE(sync_state.failed_token_ids, '[]'::jsonb) || jsonb_build_array(:token_id) "
+            "SELECT COALESCE(sync_state.failed_token_ids, '[]'::jsonb) "
+            "|| jsonb_build_array(:token_id) "
             "FROM sync_state WHERE id = 1"
         ).bindparams(token_id=token_id)
     ) or [token_id]
@@ -399,7 +400,7 @@ async def _enrich_and_upsert(
     for idx, token_id in enumerate(token_ids, start=1):
         try:
             agent = await client.get_agent(BSC_CHAIN_ID, token_id)
-        except UpstreamRateLimit as exc:
+        except UpstreamRateLimit:
             # The whole batch will keep hitting 429; wait for the bucket
             # to reset before the next agent instead of burning strikes.
             logger.warning(

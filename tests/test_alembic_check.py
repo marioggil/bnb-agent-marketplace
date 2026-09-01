@@ -48,7 +48,8 @@ def test_migration_ddl_fragments():
 # R2 (postgres-only) — alembic upgrade head + alembic check.
 @pytest.mark.postgres
 def test_alembic_upgrade_then_check_passes():
-    import os, subprocess
+    import os
+    import subprocess
 
     dsn = os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if not dsn:

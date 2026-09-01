@@ -6,9 +6,9 @@ Spec: `sdd/marketplace-scaffold-tests/spec` favorites-hires-tests R5, R6.
 from __future__ import annotations
 
 from app.db.models.agent import (
-    AgentCache,
     BSC_CHAIN_ID,
     BSC_IDENTITY_REGISTRY,
+    AgentCache,
     build_agent_id,
 )
 from app.services.auth import issue_csrf

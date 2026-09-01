@@ -32,7 +32,6 @@ from tenacity import (
     RetryCallState,
     retry_if_exception_type,
     stop_after_attempt,
-    wait_exponential,
     wait_random_exponential,
 )
 
@@ -403,7 +402,7 @@ class Client8004Scan:
                     "/agents",
                     params={"chain_id": chain_id, "page": page, "page_size": page_size},
                 )
-            except UpstreamRateLimit as exc:
+            except UpstreamRateLimit:
                 rate_limit_strikes += 1
                 if rate_limit_strikes > _MAX_PAGE_RATE_LIMIT_RETRIES:
                     logger.warning(

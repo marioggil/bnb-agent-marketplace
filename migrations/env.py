@@ -55,11 +55,12 @@ os.environ["DATABASE_URL"] = _resolve_sync_url()
 from alembic import context  # noqa: E402  (after sys.path fix)
 from sqlalchemy import create_engine, pool  # noqa: E402
 
+from app.db import models  # noqa: F401, E402  (side-effect: registers tables)
+
 # Importing the models registers every table on Base.metadata, which is
 # what alembic compares against. Order is irrelevant here because every
 # model module imports Base directly.
 from app.db.base import Base  # noqa: E402
-from app.db import models  # noqa: F401, E402  (side-effect: registers tables)
 
 # Alembic Config object.
 config = context.config
