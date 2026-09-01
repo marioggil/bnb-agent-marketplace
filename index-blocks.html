@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Index $U Blocks</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui; background: #0f0f0f; color: #e0e0e0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    .card { background: #1a1a2e; border: 1px solid #333; border-radius: 12px; padding: 32px; width: 420px; }
+    h1 { font-size: 20px; margin-bottom: 4px; color: #fff; }
+    p { font-size: 13px; color: #888; margin-bottom: 20px; line-height: 1.5; }
+    .field { margin-bottom: 16px; }
+    label { display: block; font-size: 12px; color: #aaa; margin-bottom: 4px; }
+    input { width: 100%; padding: 10px 12px; background: #0d0d1a; border: 1px solid #444; border-radius: 6px; color: #fff; font-size: 16px; font-family: monospace; }
+    input:focus { outline: none; border-color: #7c5cff; }
+    button { width: 100%; padding: 12px; background: #7c5cff; border: none; border-radius: 6px; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+    button:hover { background: #6a4de6; }
+    button:disabled { background: #333; cursor: not-allowed; }
+    .result { margin-top: 16px; padding: 12px; background: #0d0d1a; border-radius: 6px; font-family: monospace; font-size: 13px; white-space: pre-wrap; display: none; }
+    .result.ok { border-color: #2ecc71; }
+    .result.err { border-color: #e74c3c; color: #e74c3c; }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hint { font-size: 11px; color: #666; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Index $U Blocks</h1>
+    <p>Ponete el número de bloque de inicio. El workflow indexa 2000 bloques (~33 min) y te dice por dónde continuar.</p>
+    <div class="field">
+      <label>Bloque inicial</label>
+      <input type="number" id="from" placeholder="72122100">
+      <div class="hint">Tip: mirá el último bloque indexado en /api/onchain/health</div>
+    </div>
+    <button id="btn" onclick="run()">Indexar</button>
+    <div id="result" class="result"></div>
+  </div>
+
+  <script>
+    const N8N_WEBHOOK = 'http://localhost:5678/webhook/index-blocks';
+
+    async function run() {
+      const btn = document.getElementById('btn');
+      const result = document.getElementById('result');
+      const from = document.getElementById('from').value;
+
+      if (!from) {
+        result.className = 'result err';
+        result.style.display = 'block';
+        result.textContent = 'Ponete un bloque inicial';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Indexando ~33 min...';
+      result.className = 'result';
+      result.style.display = 'block';
+      result.textContent = 'Arrancó. Esperá ~33 min o mirá n8n para ver el progreso.';
+
+      try {
+        const resp = await fetch(N8N_WEBHOOK, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from: Number(from) })
+        });
+        const data = await resp.json();
+
+        if (data.ok) {
+          result.className = 'result ok';
+          result.textContent =
+            `✅ Listo: ${data.blocks_scanned} blocks escaneados\n` +
+            `💰 Transfers: ${data.total_transfers}\n` +
+            `🎫 Events: ${data.total_events}\n` +
+            `📌 Continuar desde: ${data.continue_from}`;
+        } else {
+          result.className = 'result err';
+          result.textContent = '❌ ' + (data.error || 'Error desconocido');
+        }
+      } catch (e) {
+        result.className = 'result err';
+        result.textContent = '⚠️ Si tarda mucho es normal (~33 min).\nMirá n8n para ver el progreso.\n\nError: ' + e.message;
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Indexar';
+    }
+  </script>
+</body>
+</html>
