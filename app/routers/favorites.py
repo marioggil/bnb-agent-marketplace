@@ -8,6 +8,7 @@ The `add_favorite` upsert uses a dialect-aware `Insert(...)` so the
 (>= 3.24) and Postgres with identical semantics — refactor for FU-1
 (id 35 code-change contract for the `favorites` router).
 """
+
 from __future__ import annotations
 
 import logging
@@ -40,7 +41,9 @@ async def list_favorites(
     """List the caller's favorites (spec R2)."""
     rows = (
         await db.scalars(
-            select(Favorite).where(Favorite.address == user.address).order_by(Favorite.created_at.desc())
+            select(Favorite)
+            .where(Favorite.address == user.address)
+            .order_by(Favorite.created_at.desc())
         )
     ).all()
     return [FavoriteOut.model_validate(r) for r in rows]
@@ -60,7 +63,9 @@ async def add_favorite(
     behaviour is identical across sqlite and Postgres.
     """
     # 404 if the agent isn't cached.
-    agent = await db.scalar(select(AgentCache.agent_id).where(AgentCache.agent_id == payload.agent_id))
+    agent = await db.scalar(
+        select(AgentCache.agent_id).where(AgentCache.agent_id == payload.agent_id)
+    )
     if agent is None:
         raise NotFound(f"agent {payload.agent_id!r} not cached")
     # Dialect-aware Insert: `pg_insert` for Postgres, `sqlite_insert` for
@@ -78,9 +83,7 @@ async def add_favorite(
     res = await db.execute(stmt)
     created = res.scalar_one()
     await db.commit()
-    return FavoriteOut(
-        address=user.address, agent_id=payload.agent_id, created_at=created
-    )
+    return FavoriteOut(address=user.address, agent_id=payload.agent_id, created_at=created)
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -92,9 +95,7 @@ async def remove_favorite(
 ) -> None:
     """Remove the caller's favorite (spec R3). 404 if not owned."""
     row = await db.scalar(
-        select(Favorite).where(
-            Favorite.address == user.address, Favorite.agent_id == agent_id
-        )
+        select(Favorite).where(Favorite.address == user.address, Favorite.agent_id == agent_id)
     )
     if row is None:
         raise NotFound("favorite not found")

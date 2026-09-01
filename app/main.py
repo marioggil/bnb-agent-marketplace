@@ -4,6 +4,7 @@ Spec: `sdd/marketplace-scaffold/spec/app-bootstrap` (#24) + design id 26
 module map. The factory is the single composition root — `uvicorn
 app.main:app` and the tests both import `app`.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -18,7 +19,18 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.db.session import AsyncSessionLocal, engine
 from app.errors import register_error_handlers
-from app.routers import agents, auth, favorites, healthz, hires, onchain_hires, onchain_stats, pages, payments, sync
+from app.routers import (
+    agents,
+    auth,
+    favorites,
+    healthz,
+    hires,
+    onchain_hires,
+    onchain_stats,
+    pages,
+    payments,
+    sync,
+)
 
 logger = logging.getLogger(__name__)
 

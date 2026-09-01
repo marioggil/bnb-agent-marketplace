@@ -4,6 +4,7 @@ The address is the primary key; we never store email or password. Single
 session cookie is the only auth credential. Users are upserted on first
 successful EIP-191 verify (spec wallet-auth R2).
 """
+
 from __future__ import annotations
 
 from datetime import datetime

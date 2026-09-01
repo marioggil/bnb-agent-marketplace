@@ -4,6 +4,7 @@ Spec: `sdd/x402-real-payment/spec` — hires-x402 (H1-H4) + x402-payments.
 Design: id 52 router contracts; Q6 (no owner fallback), X6 (idempotent by
 hire id), H3 (lazy TTL sweep on create).
 """
+
 from __future__ import annotations
 
 import logging
@@ -89,11 +90,7 @@ async def create_hire(
     _csrf: Annotated[None, Depends(require_csrf)] = None,
 ) -> HireCreateOut:
     """Create a pending hire + B402 challenge (spec X1/X2, H1)."""
-    agent = await db.scalar(
-        select(AgentCache).where(
-            AgentCache.agent_id == payload.agent_id
-        )
-    )
+    agent = await db.scalar(select(AgentCache).where(AgentCache.agent_id == payload.agent_id))
     if agent is None:
         raise NotFound(f"agent {payload.agent_id!r} not cached")
     pay_to = agent.agent_wallet

@@ -4,6 +4,7 @@ Spec: `sdd/x402-real-payment/spec` x402-payments X5 · design id 52 (settle.ts
 flow: estimateGas → sendRawTransaction → receipt 0x1). Offline by design —
 the RPC is mocked with respx, never touched.
 """
+
 from __future__ import annotations
 
 import json
@@ -62,8 +63,11 @@ async def test_fake_broadcaster_returns_canned_hash_and_records(payer, signed_en
 async def test_fake_broadcaster_default_hash(payer, signed_envelope):
     fb = FakeBroadcaster()
     result = await fb.broadcast(
-        _decoded(payer, signed_envelope), _token_cfg(),
-        facilitator_key="0x1", rpc_url=RPC_URL, now=_now(),
+        _decoded(payer, signed_envelope),
+        _token_cfg(),
+        facilitator_key="0x1",
+        rpc_url=RPC_URL,
+        now=_now(),
     )
     assert result.tx_hash == "0x" + "ab" * 32
 
@@ -83,9 +87,7 @@ def _rpc_error_response() -> httpx.Response:
     )
 
 
-async def test_onchain_broadcaster_happy_receipt_0x1(
-    respx_mock, payer, signed_envelope
-):
+async def test_onchain_broadcaster_happy_receipt_0x1(respx_mock, payer, signed_envelope):
     tx_hash = "0x" + "12" * 32
     respx_mock.post(RPC_URL).mock(
         side_effect=[
@@ -98,8 +100,11 @@ async def test_onchain_broadcaster_happy_receipt_0x1(
     )
     broadcaster = OnchainBroadcaster(poll_interval=0.01, poll_attempts=5)
     result = await broadcaster.broadcast(
-        _decoded(payer, signed_envelope), _token_cfg(),
-        facilitator_key="0x" + "01" * 32, rpc_url=RPC_URL, now=_now(),
+        _decoded(payer, signed_envelope),
+        _token_cfg(),
+        facilitator_key="0x" + "01" * 32,
+        rpc_url=RPC_URL,
+        now=_now(),
     )
     assert result.tx_hash == tx_hash
 
@@ -118,8 +123,11 @@ async def test_onchain_broadcaster_revert_0x0(respx_mock, payer, signed_envelope
     broadcaster = OnchainBroadcaster(poll_interval=0.01, poll_attempts=5)
     with pytest.raises(BroadcastFailed):
         await broadcaster.broadcast(
-            _decoded(payer, signed_envelope), _token_cfg(),
-            facilitator_key="0x" + "01" * 32, rpc_url=RPC_URL, now=_now(),
+            _decoded(payer, signed_envelope),
+            _token_cfg(),
+            facilitator_key="0x" + "01" * 32,
+            rpc_url=RPC_URL,
+            now=_now(),
         )
 
 
@@ -138,8 +146,11 @@ async def test_onchain_broadcaster_timeout_no_receipt(respx_mock, payer, signed_
     broadcaster = OnchainBroadcaster(poll_interval=0.01, poll_attempts=2)
     with pytest.raises(BroadcastFailed):
         await broadcaster.broadcast(
-            _decoded(payer, signed_envelope), _token_cfg(),
-            facilitator_key="0x" + "01" * 32, rpc_url=RPC_URL, now=_now(),
+            _decoded(payer, signed_envelope),
+            _token_cfg(),
+            facilitator_key="0x" + "01" * 32,
+            rpc_url=RPC_URL,
+            now=_now(),
         )
 
 
@@ -148,8 +159,11 @@ async def test_onchain_broadcaster_rpc_error(respx_mock, payer, signed_envelope)
     broadcaster = OnchainBroadcaster(poll_interval=0.01, poll_attempts=2)
     with pytest.raises(BroadcastFailed):
         await broadcaster.broadcast(
-            _decoded(payer, signed_envelope), _token_cfg(),
-            facilitator_key="0x" + "01" * 32, rpc_url=RPC_URL, now=_now(),
+            _decoded(payer, signed_envelope),
+            _token_cfg(),
+            facilitator_key="0x" + "01" * 32,
+            rpc_url=RPC_URL,
+            now=_now(),
         )
 
 
@@ -157,6 +171,9 @@ async def test_onchain_broadcaster_empty_key_raises(payer, signed_envelope):
     broadcaster = OnchainBroadcaster()
     with pytest.raises(BroadcastFailed):
         await broadcaster.broadcast(
-            _decoded(payer, signed_envelope), _token_cfg(),
-            facilitator_key="", rpc_url=RPC_URL, now=_now(),
+            _decoded(payer, signed_envelope),
+            _token_cfg(),
+            facilitator_key="",
+            rpc_url=RPC_URL,
+            now=_now(),
         )

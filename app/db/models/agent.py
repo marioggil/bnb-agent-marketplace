@@ -4,6 +4,7 @@ See `sdd/marketplace-scaffold/spec/agents-cache` (#19) and design #26 (data
 model + D3 generated category). The canonical `agent_id` is
 `{chainId}:{registry}:{tokenId}` per the ERC-8004 spec.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -71,9 +72,7 @@ class AgentCache(Base):
     agent_internal_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
     chain_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     contract_address: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_testnet: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false")
-    )
+    is_testnet: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     creator_address: Mapped[str | None] = mapped_column(Text, nullable=True)
     owner_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
     owner_ens: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -91,14 +90,10 @@ class AgentCache(Base):
     agent_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     agent_wallet: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_verified: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false")
-    )
+    is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     star_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     watch_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    tags: Mapped[list] = mapped_column(
-        JSONB, nullable=False, server_default=text("'[]'::jsonb")
-    )
+    tags: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     categories: Mapped[list] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
@@ -129,9 +124,7 @@ class AgentCache(Base):
     # ------------------------------------------------------------------
     average_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
     total_score: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
-    total_feedbacks: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
+    total_feedbacks: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     total_validations: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
@@ -183,9 +176,7 @@ class AgentCache(Base):
     # ------------------------------------------------------------------
     # Endpoint health / verification
     # ------------------------------------------------------------------
-    is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("true")
-    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     is_endpoint_verified: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
@@ -245,9 +236,7 @@ class AgentCache(Base):
     # ------------------------------------------------------------------
     # Catch-all for fields we don't model explicitly.
     # ------------------------------------------------------------------
-    raw: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default=text("'{}'::jsonb")
-    )
+    raw: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")

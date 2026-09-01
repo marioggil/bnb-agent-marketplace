@@ -2,24 +2,37 @@
 
 Spec: `sdd/marketplace-scaffold-tests/spec` pages-tests R3, R4.
 """
+
 from __future__ import annotations
 
 from tests.conftest import _now
 
 from app.db.models.agent import (
-    AgentCache, BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id,
+    AgentCache,
+    BSC_CHAIN_ID,
+    BSC_IDENTITY_REGISTRY,
+    build_agent_id,
 )
 
 
 async def _seed_n(session, n: int) -> None:
     for i in range(n):
-        session.add(AgentCache(
-            agent_id=build_agent_id(56, BSC_IDENTITY_REGISTRY, i + 1),
-            chain_id=BSC_CHAIN_ID, token_id=i + 1,
-            registry_address=BSC_IDENTITY_REGISTRY, name=f"A{i}",
-            supported_protocols=[], cross_chain_versions=[], raw={}, created_at=_now(), updated_at=_now(),
-            tags=[], categories=[],
-        ))
+        session.add(
+            AgentCache(
+                agent_id=build_agent_id(56, BSC_IDENTITY_REGISTRY, i + 1),
+                chain_id=BSC_CHAIN_ID,
+                token_id=i + 1,
+                registry_address=BSC_IDENTITY_REGISTRY,
+                name=f"A{i}",
+                supported_protocols=[],
+                cross_chain_versions=[],
+                raw={},
+                created_at=_now(),
+                updated_at=_now(),
+                tags=[],
+                categories=[],
+            )
+        )
     await session.commit()
 
 
@@ -48,8 +61,6 @@ async def test_load_more_button_emits_hx_attrs(client, db):
 
 async def test_load_more_returns_partial(client, db):
     await _seed_n(db, 5)
-    body = client.get(
-        "/?sort=name&page=2&page_size=2", headers={"HX-Request": "true"}
-    ).text
+    body = client.get("/?sort=name&page=2&page_size=2", headers={"HX-Request": "true"}).text
     assert "<html" not in body
     assert "A2" in body or "A3" in body

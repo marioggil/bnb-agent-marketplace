@@ -7,6 +7,7 @@ The endpoint NEVER calls 8004scan — the cache is the only read path
 (id 11 gotcha: /search is broken on the upstream). All filters and the
 sort key are applied to `AgentCache` directly.
 """
+
 from __future__ import annotations
 
 import logging
@@ -41,9 +42,13 @@ async def list_agents(
     db: Annotated[AsyncSession, Depends(get_db)],
     q: str | None = Query(default=None, description="Substring/ILIKE on name + description."),
     category: Literal[
-        "rebalancing", "grid_trading", "yield_optimisation",
-        "health_factor_monitoring", "other",
-    ] | None = Query(default=None),
+        "rebalancing",
+        "grid_trading",
+        "yield_optimisation",
+        "health_factor_monitoring",
+        "other",
+    ]
+    | None = Query(default=None),
     x402: bool | None = Query(default=None, description="Filter by x402_supported flag."),
     sort: str = Query(default="average_score"),
     page: int = Query(default=1, ge=1),
@@ -90,9 +95,7 @@ async def get_agent(
     from app.errors import NotFound
 
     row = await db.scalar(
-        select(AgentCache).where(
-            AgentCache.chain_id == chain_id, AgentCache.token_id == token_id
-        )
+        select(AgentCache).where(AgentCache.chain_id == chain_id, AgentCache.token_id == token_id)
     )
     if row is None:
         raise NotFound(f"agent {chain_id}:{token_id} not cached")

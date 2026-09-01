@@ -3,6 +3,7 @@
 Kept here so tests and other routers can import the canonical shapes
 without crossing into the router module.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field

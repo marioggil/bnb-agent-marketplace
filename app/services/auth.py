@@ -14,6 +14,7 @@ The service has three concerns:
 The session cookie is itsdangerous-signed (HttpOnly, SameSite=Lax,
 Secure-if-HTTPS) — see `app.routers.auth` for the Set-Cookie wiring.
 """
+
 from __future__ import annotations
 
 import hmac

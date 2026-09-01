@@ -6,6 +6,7 @@ Usage:
 Default is `--incremental --batch 100`. See spec #23 for the requirements
 (R1-R9) and the design's error model for the exit-code contract (R6).
 """
+
 from __future__ import annotations
 
 import argparse

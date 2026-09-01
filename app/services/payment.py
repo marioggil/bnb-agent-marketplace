@@ -19,6 +19,7 @@ verify.ts / settle.ts). Frozen shapes:
 Offline-testable: eth-account keypair signs locally; broadcasters sit behind a
 Protocol (FakeBroadcaster in tests, OnchainBroadcaster vs the RPC).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -286,9 +287,7 @@ def decode_envelope(header: str) -> DecodedPayment:
 # ---------------------------------------------------------------------------
 
 
-def _recover_signer(
-    decoded: DecodedPayment, *, chain_id: int, token_cfg: TokenConfig
-) -> str:
+def _recover_signer(decoded: DecodedPayment, *, chain_id: int, token_cfg: TokenConfig) -> str:
     """EIP-712 recover the payer via eth-account (TransferWithAuthorization)."""
     auth = decoded.authorization
     # eth-account >= 0.13 uses positional args for encode_typed_data;
@@ -364,9 +363,7 @@ def verify_payment(
 
     recovered = _recover_signer(decoded, chain_id=chain_id, token_cfg=token_cfg)
     if recovered.lower() != payer.lower():
-        raise SignatureMismatch(
-            f"recovered address {recovered} does not match payer {payer}"
-        )
+        raise SignatureMismatch(f"recovered address {recovered} does not match payer {payer}")
 
 
 # ---------------------------------------------------------------------------
@@ -388,9 +385,7 @@ class Broadcaster(Protocol):
     ) -> BroadcastResult: ...
 
 
-def _transfer_with_authorization_calldata(
-    auth: dict[str, Any], signature: str
-) -> str:
+def _transfer_with_authorization_calldata(auth: dict[str, Any], signature: str) -> str:
     """ABI-encode `transferWithAuthorization(...)` for the $U contract."""
     nonce = auth["nonce"]
     if isinstance(nonce, str) and nonce.startswith("0x"):
@@ -400,7 +395,9 @@ def _transfer_with_authorization_calldata(
     else:
         nonce_bytes = int(nonce).to_bytes(32, "big")
     sig_bytes = (
-        bytes.fromhex(signature[2:]) if isinstance(signature, str) and signature.startswith("0x") else signature
+        bytes.fromhex(signature[2:])
+        if isinstance(signature, str) and signature.startswith("0x")
+        else signature
     )
     encoded = eth_abi_encode(
         ["address", "address", "uint256", "uint256", "uint256", "bytes32", "bytes"],
@@ -521,9 +518,7 @@ class OnchainBroadcaster:
                     raise BroadcastFailed("transaction reverted onchain")
                 return
             await asyncio.sleep(self._poll_interval)
-        raise BroadcastFailed(
-            f"no receipt after {self._poll_attempts} polls ({tx_hash})"
-        )
+        raise BroadcastFailed(f"no receipt after {self._poll_attempts} polls ({tx_hash})")
 
 
 class FakeBroadcaster:

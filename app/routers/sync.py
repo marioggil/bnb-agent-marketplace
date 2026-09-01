@@ -16,6 +16,7 @@ kept module-level so the GC does not drop it mid-run. A module-level lock
 binding issues) gives fast 409s on concurrent triggers; the authoritative
 "running" flag is the task's own `done()` state.
 """
+
 from __future__ import annotations
 
 import asyncio

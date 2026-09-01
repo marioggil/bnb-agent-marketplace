@@ -4,6 +4,7 @@ Spec: `sdd/marketplace-scaffold-tests/spec` bootstrap-tests R2, R3.
 R3 (default) — file exists, parses, carries key DDL fragments.
 R2 (postgres-only) — `alembic upgrade head` + `alembic check` (D6 CI gate).
 """
+
 from __future__ import annotations
 
 import ast
@@ -13,7 +14,10 @@ import pytest
 
 MIGRATION = Path(__file__).resolve().parent.parent / "migrations" / "versions" / "0001_initial.py"
 MIGRATION_0004 = (
-    Path(__file__).resolve().parent.parent / "migrations" / "versions" / "0004_hired_payment_cols.py"
+    Path(__file__).resolve().parent.parent
+    / "migrations"
+    / "versions"
+    / "0004_hired_payment_cols.py"
 )
 
 
@@ -45,6 +49,7 @@ def test_migration_ddl_fragments():
 @pytest.mark.postgres
 def test_alembic_upgrade_then_check_passes():
     import os, subprocess
+
     dsn = os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if not dsn:
         pytest.skip("TEST_DATABASE_URL or DATABASE_URL not set")

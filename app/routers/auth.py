@@ -13,6 +13,7 @@ The router does not import any template — it is purely JSON for HTMX and
 mobile. The HTMX redirect story lives in the error handlers (commit 4)
 and pages.py (commit 6).
 """
+
 from __future__ import annotations
 
 import logging

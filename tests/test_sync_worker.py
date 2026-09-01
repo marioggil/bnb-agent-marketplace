@@ -4,6 +4,7 @@ Spec: `sdd/marketplace-scaffold-tests/spec` sync-tests R1, R3, R4, R7.
 Default aiosqlite run covers the no-DB-write paths. Upsert + FIFO + checkpoint
 are `@pytest.mark.postgres` and skipped by default; CI (FU-7) wires them.
 """
+
 from __future__ import annotations
 
 import logging
@@ -21,17 +22,38 @@ async def test_iter_agents_filters_chain_mismatch(respx_mock):
     respx_mock.get(
         f"{BASE}/agents",
         params={"chain_id": 56, "page": 1, "page_size": 200},
-    ).respond(200, json=[
-        {"agent_id": "56:0x8004...:1", "chain_id": 56, "token_id": 1,
-         "registry": "0x8004...", "name": "BSC1", "x402_supported": False,
-         "supported_protocols": []},
-        {"agent_id": "1:0xOther:2", "chain_id": 1, "token_id": 2,
-         "registry": "0xOther", "name": "ETH", "x402_supported": False,
-         "supported_protocols": []},
-        {"agent_id": "56:0x8004...:3", "chain_id": 56, "token_id": 3,
-         "registry": "0x8004...", "name": "BSC3", "x402_supported": False,
-         "supported_protocols": []},
-    ])
+    ).respond(
+        200,
+        json=[
+            {
+                "agent_id": "56:0x8004...:1",
+                "chain_id": 56,
+                "token_id": 1,
+                "registry": "0x8004...",
+                "name": "BSC1",
+                "x402_supported": False,
+                "supported_protocols": [],
+            },
+            {
+                "agent_id": "1:0xOther:2",
+                "chain_id": 1,
+                "token_id": 2,
+                "registry": "0xOther",
+                "name": "ETH",
+                "x402_supported": False,
+                "supported_protocols": [],
+            },
+            {
+                "agent_id": "56:0x8004...:3",
+                "chain_id": 56,
+                "token_id": 3,
+                "registry": "0x8004...",
+                "name": "BSC3",
+                "x402_supported": False,
+                "supported_protocols": [],
+            },
+        ],
+    )
     respx_mock.get(
         f"{BASE}/agents",
         params={"chain_id": 56, "page": 2, "page_size": 200},
@@ -53,11 +75,18 @@ async def test_429_backoff_then_success(respx_mock):
     route = respx_mock.get(f"{BASE}/agents/56/42")
     route.side_effect = [
         httpx.Response(429, headers={"Retry-After": "1"}),
-        httpx.Response(200, json={
-            "agent_id": "56:0x8004...:42", "chain_id": 56, "token_id": 42,
-            "registry": "0x8004...", "name": "After Backoff",
-            "x402_supported": False, "supported_protocols": [],
-        }),
+        httpx.Response(
+            200,
+            json={
+                "agent_id": "56:0x8004...:42",
+                "chain_id": 56,
+                "token_id": 42,
+                "registry": "0x8004...",
+                "name": "After Backoff",
+                "x402_supported": False,
+                "supported_protocols": [],
+            },
+        ),
     ]
     started = time.monotonic()
     async with Client8004Scan() as client:
@@ -76,4 +105,3 @@ async def test_api_key_missing_logs_warning(caplog):
         "8004SCAN_API_KEY" in r.getMessage() or "rate limit" in r.getMessage().lower()
         for r in caplog.records
     )
-

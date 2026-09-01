@@ -4,6 +4,7 @@ Spec: `sdd/x402-real-payment/spec` app-bootstrap-x402 B1 · design id 52 D5.
 Uses a fresh `Settings` per case (cache cleared) so the env surface is
 exercised exactly as the runtime sees it.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal

@@ -3,6 +3,7 @@
 Provides hire stats, trends, and wallet activity from the onchain_transfers
 table (populated by the background indexer). All queries are local — no RPC.
 """
+
 from __future__ import annotations
 
 import logging
@@ -302,12 +303,14 @@ async def test_block_transfers(
                 json={
                     "jsonrpc": "2.0",
                     "method": "eth_getLogs",
-                    "params": [{
-                        "fromBlock": hex(block_number),
-                        "toBlock": hex(block_number + 9),
-                        "address": U_TOKEN,
-                        "topics": [TRANSFER_TOPIC, None, None],
-                    }],
+                    "params": [
+                        {
+                            "fromBlock": hex(block_number),
+                            "toBlock": hex(block_number + 9),
+                            "address": U_TOKEN,
+                            "topics": [TRANSFER_TOPIC, None, None],
+                        }
+                    ],
                     "id": 1,
                 },
             )
@@ -341,12 +344,14 @@ async def test_block_transfers(
                 json={
                     "jsonrpc": "2.0",
                     "method": "eth_getLogs",
-                    "params": [{
-                        "fromBlock": hex(block_number),
-                        "toBlock": hex(block_number + 9),
-                        "address": IDENTITY_REGISTRY,
-                        "topics": [TRANSFER_TOPIC, None, None, None],
-                    }],
+                    "params": [
+                        {
+                            "fromBlock": hex(block_number),
+                            "toBlock": hex(block_number + 9),
+                            "address": IDENTITY_REGISTRY,
+                            "topics": [TRANSFER_TOPIC, None, None, None],
+                        }
+                    ],
                     "id": 2,
                 },
             )
@@ -388,25 +393,47 @@ async def index_block(block_number: int) -> dict:
         return "0x" + topic[-40:]
 
     async def get_logs(hc, address, topics):
-        r = await hc.post(RPC, json={
-            "jsonrpc": "2.0", "method": "eth_getLogs", "id": 1,
-            "params": [{"fromBlock": hex(block_number), "toBlock": hex(block_number),
-                       "address": address, "topics": topics}]
-        })
+        r = await hc.post(
+            RPC,
+            json={
+                "jsonrpc": "2.0",
+                "method": "eth_getLogs",
+                "id": 1,
+                "params": [
+                    {
+                        "fromBlock": hex(block_number),
+                        "toBlock": hex(block_number),
+                        "address": address,
+                        "topics": topics,
+                    }
+                ],
+            },
+        )
         data = r.json()
         return data.get("result", []) if isinstance(data.get("result"), list) else []
 
     async def get_ts(hc):
-        r = await hc.post(RPC, json={
-            "jsonrpc": "2.0", "method": "eth_getBlockByNumber",
-            "params": [hex(block_number), False], "id": 1
-        })
+        r = await hc.post(
+            RPC,
+            json={
+                "jsonrpc": "2.0",
+                "method": "eth_getBlockByNumber",
+                "params": [hex(block_number), False],
+                "id": 1,
+            },
+        )
         data = r.json()
         if data.get("result"):
             return datetime.fromtimestamp(int(data["result"]["timestamp"], 16), tz=timezone.utc)
         return datetime.now(timezone.utc)
 
-    result = {"block": block_number, "transfers": 0, "events": 0, "transfer_details": [], "event_details": []}
+    result = {
+        "block": block_number,
+        "transfers": 0,
+        "events": 0,
+        "transfer_details": [],
+        "event_details": [],
+    }
 
     async with httpx.AsyncClient(timeout=15.0) as hc:
         ts = await get_ts(hc)
@@ -435,20 +462,32 @@ async def index_block(block_number: int) -> dict:
                 tx = log["transactionHash"]
                 linked_agent = wallet_to_agent.get(to_addr.lower())
 
-                stmt = pg_insert(OnchainTransfer).values(
-                    from_address=from_addr, to_address=to_addr, value=value,
-                    block_number=block_number, timestamp=ts, tx_hash=tx,
-                    transfer_type="erc20_u", linked_agent_id=linked_agent,
-                ).on_conflict_do_nothing()
+                stmt = (
+                    pg_insert(OnchainTransfer)
+                    .values(
+                        from_address=from_addr,
+                        to_address=to_addr,
+                        value=value,
+                        block_number=block_number,
+                        timestamp=ts,
+                        tx_hash=tx,
+                        transfer_type="erc20_u",
+                        linked_agent_id=linked_agent,
+                    )
+                    .on_conflict_do_nothing()
+                )
                 await session.execute(stmt)
                 result["transfers"] += 1
-                result["transfer_details"].append({"from": from_addr, "to": to_addr, "value": str(value), "agent": linked_agent})
+                result["transfer_details"].append(
+                    {"from": from_addr, "to": to_addr, "value": str(value), "agent": linked_agent}
+                )
             await session.commit()
 
         # NFT events
         nft_logs = await get_logs(hc, IDENTITY_REGISTRY, [TOPIC, None, None, None])
         async with session_factory() as session:
             from app.db.models.agent import BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id
+
             for log in nft_logs:
                 from_addr = addr(log["topics"][1])
                 to_addr = addr(log["topics"][2])
@@ -457,14 +496,25 @@ async def index_block(block_number: int) -> dict:
                 event_type = "mint" if from_addr == "0x" + "0" * 40 else "transfer"
                 agent_id = build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id)
 
-                stmt = pg_insert(OnchainAgentEvent).values(
-                    agent_id=agent_id, token_id=token_id, event_type=event_type,
-                    from_address=from_addr, to_address=to_addr, block_number=block_number,
-                    timestamp=ts, tx_hash=tx,
-                ).on_conflict_do_nothing()
+                stmt = (
+                    pg_insert(OnchainAgentEvent)
+                    .values(
+                        agent_id=agent_id,
+                        token_id=token_id,
+                        event_type=event_type,
+                        from_address=from_addr,
+                        to_address=to_addr,
+                        block_number=block_number,
+                        timestamp=ts,
+                        tx_hash=tx,
+                    )
+                    .on_conflict_do_nothing()
+                )
                 await session.execute(stmt)
                 result["events"] += 1
-                result["event_details"].append({"agent": agent_id, "type": event_type, "from": from_addr, "to": to_addr})
+                result["event_details"].append(
+                    {"agent": agent_id, "type": event_type, "from": from_addr, "to": to_addr}
+                )
             await session.commit()
 
     return result
@@ -480,9 +530,13 @@ async def backfill_state() -> dict:
     state = get_backfill_state()
     session_factory = get_sessionmaker()
     async with session_factory() as session:
-        r1 = await session.execute(text("SELECT COALESCE(MAX(block_number), 0) FROM onchain_transfers"))
+        r1 = await session.execute(
+            text("SELECT COALESCE(MAX(block_number), 0) FROM onchain_transfers")
+        )
         r2 = await session.execute(text("SELECT COUNT(*) FROM onchain_transfers"))
-        r3 = await session.execute(text("SELECT COALESCE(MAX(block_number), 0) FROM onchain_agent_events"))
+        r3 = await session.execute(
+            text("SELECT COALESCE(MAX(block_number), 0) FROM onchain_agent_events")
+        )
         db_transfers_max = r1.scalar()
         db_transfers_count = r2.scalar()
         db_events_max = r3.scalar()

@@ -6,6 +6,7 @@ We rewrite the same `DATABASE_URL` from the env, only swapping the driver
 suffix, BEFORE importing any `app.*` modules so that the import side
 effects (lazy engine creation in `app.db.session`) see the right URL.
 """
+
 from __future__ import annotations
 
 import os

@@ -2,21 +2,32 @@
 
 Spec: `sdd/marketplace-scaffold-tests/spec` agents-tests R1-R4.
 """
+
 from __future__ import annotations
 
 from tests.conftest import _now
 
 from app.db.models.agent import (
-    AgentCache, BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id,
+    AgentCache,
+    BSC_CHAIN_ID,
+    BSC_IDENTITY_REGISTRY,
+    build_agent_id,
 )
 
 
 async def _seed_five(session) -> None:
     """Five BSC agents with distinct average_score for sort assertions."""
     rows = [
-        {"agent_id": build_agent_id(56, BSC_IDENTITY_REGISTRY, t), "chain_id": 56,
-         "token_id": t, "registry_address": BSC_IDENTITY_REGISTRY, "name": n,
-         "average_score": s, "x402_supported": x, "category": c}
+        {
+            "agent_id": build_agent_id(56, BSC_IDENTITY_REGISTRY, t),
+            "chain_id": 56,
+            "token_id": t,
+            "registry_address": BSC_IDENTITY_REGISTRY,
+            "name": n,
+            "average_score": s,
+            "x402_supported": x,
+            "category": c,
+        }
         for t, n, s, x, c in [
             (1, "A", 90.0, True, "rebalancing"),
             (2, "B", 70.0, False, "other"),
@@ -26,8 +37,16 @@ async def _seed_five(session) -> None:
         ]
     ]
     for r in rows:
-        session.add(AgentCache(supported_protocols=[], cross_chain_versions=[],
-                                raw={}, created_at=_now(), updated_at=_now(), **r))
+        session.add(
+            AgentCache(
+                supported_protocols=[],
+                cross_chain_versions=[],
+                raw={},
+                created_at=_now(),
+                updated_at=_now(),
+                **r,
+            )
+        )
     await session.commit()
 
 

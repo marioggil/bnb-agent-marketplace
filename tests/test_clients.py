@@ -1,4 +1,5 @@
 """Unit tests for the Termix, EvoEvo, and Alchemy onchain clients."""
+
 from __future__ import annotations
 
 import httpx
@@ -15,13 +16,16 @@ ALCHEMY_RPC_BASE = "https://bnb-mainnet.g.alchemy.com/v2"
 
 @pytest.mark.anyio
 async def test_fetch_evoevo_card_success(respx_mock):
-    respx_mock.get(f"{EVOEVO_BASE}/123").respond(200, json={
-        "name": "Bot123",
-        "active": True,
-        "x402Support": False,
-        "services": [],
-        "registrations": [],
-    })
+    respx_mock.get(f"{EVOEVO_BASE}/123").respond(
+        200,
+        json={
+            "name": "Bot123",
+            "active": True,
+            "x402Support": False,
+            "services": [],
+            "registrations": [],
+        },
+    )
     result = await fetch_evoevo_card(123)
     assert result is not None
     assert result["name"] == "Bot123"
@@ -44,10 +48,13 @@ async def test_fetch_evoevo_card_network_error_returns_none(respx_mock):
 
 @pytest.mark.anyio
 async def test_fetch_termix_card_success(respx_mock):
-    respx_mock.get(f"{TERMIX_BASE}/456/card").respond(200, json={
-        "status": "BOUND",
-        "presence": "online",
-    })
+    respx_mock.get(f"{TERMIX_BASE}/456/card").respond(
+        200,
+        json={
+            "status": "BOUND",
+            "presence": "online",
+        },
+    )
     result = await fetch_termix_card(456)
     assert result is not None
     assert result["status"] == "BOUND"

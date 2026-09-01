@@ -3,6 +3,7 @@
 Queries BSCScan for $U token transfers to an agent's wallet.
 Provides verified hire counts from on-chain data.
 """
+
 from __future__ import annotations
 
 import logging
@@ -35,9 +36,7 @@ async def get_onchain_hire_stats(
     """
     # Get agent from cache
     agent = await db.scalar(
-        select(AgentCache).where(
-            AgentCache.chain_id == chain_id, AgentCache.token_id == token_id
-        )
+        select(AgentCache).where(AgentCache.chain_id == chain_id, AgentCache.token_id == token_id)
     )
     if agent is None:
         raise NotFound(f"agent {chain_id}:{token_id} not cached")

@@ -4,6 +4,7 @@ Spec: `sdd/x402-real-payment/spec` x402-payments (X1-X7) · design id 52 (D4
 fixture, D7 validity). Fully offline: eth-account keypair + the frozen
 `tests/fixtures/b402_challenge.json`.
 """
+
 from __future__ import annotations
 
 import base64
@@ -315,9 +316,7 @@ def test_verify_wrong_chain(payer, signed_envelope):
 
 def test_verify_wrong_token(payer, signed_envelope):
     challenge = _build_challenge()
-    decoded = decode_envelope(
-        signed_envelope(payer, challenge, token="0x" + "22" * 20)
-    )
+    decoded = decode_envelope(signed_envelope(payer, challenge, token="0x" + "22" * 20))
     with pytest.raises(WrongChain):
         verify_payment(
             decoded,
@@ -333,9 +332,7 @@ def test_verify_wrong_token(payer, signed_envelope):
 def test_verify_survives_a_round_trip_within_window(payer, signed_envelope):
     """The signed envelope must still verify a minute later (no race)."""
     challenge = _build_challenge()
-    envelope = signed_envelope(
-        payer, challenge, valid_before=int(_now().timestamp()) + 300 + 60
-    )
+    envelope = signed_envelope(payer, challenge, valid_before=int(_now().timestamp()) + 300 + 60)
     decoded = decode_envelope(envelope)
     verify_payment(
         decoded,

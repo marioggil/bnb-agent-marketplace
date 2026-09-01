@@ -4,6 +4,7 @@ The auth router (PR-C) issues a nonce, signs in with `personal_sign`, then
 flips `used=true` in the same transaction as the user upsert. A periodic
 cleanup deletes rows older than the TTL.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -26,12 +27,8 @@ class AuthNonce(Base):
 
     address: Mapped[str] = mapped_column(String(_ADDRESS_LEN), primary_key=True)
     nonce: Mapped[str] = mapped_column(String(64), nullable=False)
-    used: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false")
-    )
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    used: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
