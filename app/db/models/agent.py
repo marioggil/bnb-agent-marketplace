@@ -91,7 +91,9 @@ class AgentCache(Base):
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     star_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     watch_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    tags: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
     categories: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
@@ -234,7 +236,9 @@ class AgentCache(Base):
     # ------------------------------------------------------------------
     # Catch-all for fields we don't model explicitly.
     # ------------------------------------------------------------------
-    raw: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    raw: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")

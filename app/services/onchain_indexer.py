@@ -301,7 +301,9 @@ async def _scan_and_store_direct(
             except Exception:
                 return None
 
-        async def _get_logs(address: str, topics: list[str | None], fb: int, tb: int) -> list[dict[str, Any]]:
+        async def _get_logs(
+            address: str, topics: list[str | None], fb: int, tb: int
+        ) -> list[dict[str, Any]]:
             data = await _call(
                 "eth_getLogs",
                 [{"fromBlock": hex(fb), "toBlock": hex(tb), "address": address, "topics": topics}],
