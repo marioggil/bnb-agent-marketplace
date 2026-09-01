@@ -62,6 +62,12 @@ CHAINSTACK_MAX_BLOCK_RANGE = 100  # Chainstack free tier: 100 blocks per request
 BACKFILL_CHUNK_SIZE = 250
 BACKFILL_INTERVAL = 240
 
+#: How far back the backfill starts when the DB is empty. The activity
+#: metric only consumes the last 90 days; BSC currently produces ~192K
+#: blocks/day (measured 2026-09-01: 578,084 blocks in 259,637s ≈ 2.23
+#: blocks/s), so 18M blocks ≈ 93 days of margin.
+BACKFILL_START_WINDOW_BLOCKS = 18_000_000
+
 # Realtime worker (Chainstack): keeps up with chain head
 # Chainstack: 1 RU per request, 100 blocks/call
 # 75 blocks/cycle = 1 request = 1 RU/cycle → 10,800 RU/month (0.36% of 3M)
@@ -409,15 +415,18 @@ def get_backfill_state() -> dict[str, Any]:
     return {"last_scanned": _backfill_last_scanned}
 
 
-def _resolve_backfill_start(db_max: int) -> int:
+def _resolve_backfill_start(db_max: int, current_block: int) -> int:
     """Return the block the backfill resumes from, given the DB max.
 
-    A populated DB resumes from its highest indexed block; an empty DB
-    starts at the first block with actual $U transfers. Regression fix:
-    never restart from the token creation era (72M) when the DB is
-    already populated — that re-scan takes ~500 days to reach the head.
+    A populated DB resumes from its highest indexed block. An empty DB
+    starts at (head - 90 days) instead of the token creation era (~72M):
+    the activity metric only consumes the recent window, and re-scanning
+    47M blocks would take ~500 days at the backfill pace.
     """
-    return db_max if db_max > 0 else U_FIRST_TRANSFER_BLOCK - 1
+    if db_max > 0:
+        return db_max
+    recent_start = current_block - BACKFILL_START_WINDOW_BLOCKS
+    return max(recent_start, U_FIRST_TRANSFER_BLOCK - 1)
 
 
 async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
@@ -463,7 +472,7 @@ async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
             """)
             )
             db_max = result.scalar() or 0
-            _backfill_last_scanned = _resolve_backfill_start(db_max)
+            _backfill_last_scanned = _resolve_backfill_start(db_max, current_block)
 
         from_block = _backfill_last_scanned + 1
         gap = current_block - from_block
