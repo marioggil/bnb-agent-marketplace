@@ -21,6 +21,7 @@ requirements and scenarios. Design decisions D3 (generated category
 + post-pass) and D7 (FIFO cap 1000 for failed_token_ids) are enforced
 here.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -108,9 +109,7 @@ async def _ensure_sync_state(session: AsyncSession) -> SyncState:
     return state
 
 
-async def _record_failure(
-    session: AsyncSession, state: SyncState, token_id: int
-) -> None:
+async def _record_failure(session: AsyncSession, state: SyncState, token_id: int) -> None:
     """Append a token_id to the jsonb failure list, capped at FAILED_TOKEN_IDS_CAP (D7).
 
     Order is chronological (oldest first, newest last); trimming `[-CAP:]` drops
@@ -143,7 +142,8 @@ def _row_from_agent(agent: Any, category_override: str) -> dict[str, Any]:
     """
     return {
         # -- identity --
-        "agent_id": agent.agent_id or canonical_agent_id(agent.chain_id or BSC_CHAIN_ID, agent.token_id or 0),
+        "agent_id": agent.agent_id
+        or canonical_agent_id(agent.chain_id or BSC_CHAIN_ID, agent.token_id or 0),
         "agent_internal_id": agent.id,
         "chain_id": int(agent.chain_id) if agent.chain_id is not None else BSC_CHAIN_ID,
         "chain_type": agent.chain_type,
@@ -228,9 +228,7 @@ def _row_from_agent(agent: Any, category_override: str) -> dict[str, Any]:
     }
 
 
-async def _upsert_agent(
-    session: AsyncSession, row: dict[str, Any]
-) -> None:
+async def _upsert_agent(session: AsyncSession, row: dict[str, Any]) -> None:
     """Idempotent ON CONFLICT upsert keyed on agent_id.
 
     Touches every column the 8004scan detail endpoint can populate so
@@ -329,9 +327,7 @@ async def _upsert_agent(
     await session.execute(stmt)
 
 
-async def _maybe_enrich_category(
-    session: AsyncSession, agent: Any, agent_id: str
-) -> None:
+async def _maybe_enrich_category(session: AsyncSession, agent: Any, agent_id: str) -> None:
     """If the rich mapping differs from the GENERATED default, UPDATE the row.
 
     Spec: the worker post-pass refines `category` for rows with oasf skills
@@ -408,7 +404,8 @@ async def _enrich_and_upsert(
             # to reset before the next agent instead of burning strikes.
             logger.warning(
                 "rate limited at token_id=%s; waiting %ss before continuing",
-                token_id, _ENRICH_RATE_LIMIT_BACKOFF_S,
+                token_id,
+                _ENRICH_RATE_LIMIT_BACKOFF_S,
             )
             await asyncio.sleep(_ENRICH_RATE_LIMIT_BACKOFF_S)
             failed += 1
@@ -451,7 +448,11 @@ async def _enrich_and_upsert(
             await session.commit()
             logger.info(
                 "sync: progress=%s/%s upserted=%s failed=%s last_token_id=%s",
-                idx, len(token_ids), upserted, failed, last_token_id,
+                idx,
+                len(token_ids),
+                upserted,
+                failed,
+                last_token_id,
             )
 
         # Stay under the 50 rpm free tier (1.2 s/request).
@@ -492,15 +493,24 @@ async def _run_sync(batch: int, label: str, detail_sleep_s: float) -> SyncReport
 
     async with AsyncSessionLocal() as session, Client8004Scan() as client:
         token_ids, fetched, skipped_wrong_chain = await _discover_bsc_token_ids(
-            client, batch, page_size=200, page_delay=detail_sleep_s,
+            client,
+            batch,
+            page_size=200,
+            page_delay=detail_sleep_s,
         )
         logger.info(
             "sync %s: discover fetched=%s bsc_candidates=%s skipped_wrong_chain=%s",
-            label, fetched, len(token_ids), skipped_wrong_chain,
+            label,
+            fetched,
+            len(token_ids),
+            skipped_wrong_chain,
         )
 
         upserted, failed, last_token_id, walked = await _enrich_and_upsert(
-            session, client, token_ids, detail_sleep_s,
+            session,
+            client,
+            token_ids,
+            detail_sleep_s,
         )
 
         # Update checkpoint + last_sync_at. last_token_id is the max

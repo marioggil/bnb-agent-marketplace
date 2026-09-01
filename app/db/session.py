@@ -4,6 +4,7 @@ The runtime uses `asyncpg` for the FastAPI request loop. Alembic (D9 in design)
 uses a separate `psycopg2` sync engine against the same `DATABASE_URL`, only
 flipping the driver suffix; see `migrations/env.py`.
 """
+
 from __future__ import annotations
 
 import os

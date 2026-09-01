@@ -9,6 +9,7 @@ Usage:
     result = await client.rpc_call("eth_getLogs", [...])
     await client.close()
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -63,7 +64,9 @@ class MultiRPCClient:
         self._cooldown_until: dict[str, float] = {"chainstack": 0, "alchemy": 0}
 
         if chainstack_key:
-            self._urls["chainstack"] = PROVIDERS["chainstack"]["url_template"].format(key=chainstack_key)
+            self._urls["chainstack"] = PROVIDERS["chainstack"]["url_template"].format(
+                key=chainstack_key
+            )
             self._available["chainstack"] = True
         if alchemy_key:
             self._urls["alchemy"] = PROVIDERS["alchemy"]["url_template"].format(key=alchemy_key)
@@ -105,7 +108,9 @@ class MultiRPCClient:
             self._cooldown_until[provider] = time.time() + PROVIDER_COOLDOWN
             logger.warning(
                 "RPC %s: %d consecutive failures, cooldown %ds",
-                provider, self._consecutive_failures[provider], PROVIDER_COOLDOWN,
+                provider,
+                self._consecutive_failures[provider],
+                PROVIDER_COOLDOWN,
             )
 
     def _record_success(self, provider: str) -> None:
@@ -119,7 +124,9 @@ class MultiRPCClient:
         self, method: str, params: list[Any], timeout: float = 15.0
     ) -> dict[str, Any] | None:
         """Make an RPC call with automatic provider selection and fallback."""
-        providers_to_try = [self._primary, self._fallback] if self._fallback != self._primary else [self._primary]
+        providers_to_try = (
+            [self._primary, self._fallback] if self._fallback != self._primary else [self._primary]
+        )
 
         for provider in providers_to_try:
             if not self._is_provider_healthy(provider):
@@ -172,7 +179,5 @@ class MultiRPCClient:
             "fallback": self._fallback,
             "usage": dict(self._usage),
             "available": dict(self._available),
-            "healthy": {
-                p: self._is_provider_healthy(p) for p in ["chainstack", "alchemy"]
-            },
+            "healthy": {p: self._is_provider_healthy(p) for p in ["chainstack", "alchemy"]},
         }

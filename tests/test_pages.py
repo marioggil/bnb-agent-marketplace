@@ -192,7 +192,10 @@ async def test_agent_detail_eip8004_registration_renders(client, db):
                 ],
                 "attributes": [
                     {"trait_type": "Category", "value": "rebalancing"},
-                    {"trait_type": "Domain proof", "value": "https://example.com/.well-known/agent-registration.json"},
+                    {
+                        "trait_type": "Domain proof",
+                        "value": "https://example.com/.well-known/agent-registration.json",
+                    },
                 ],
             },
         }

@@ -21,6 +21,7 @@ The base file (hierarchy) was introduced in 5.1; this commit (6.1)
 adds the handler + the JSON/HTMX switching logic + the `to_envelope`
 helper that test_auth and the test suite can assert on.
 """
+
 from __future__ import annotations
 
 import logging

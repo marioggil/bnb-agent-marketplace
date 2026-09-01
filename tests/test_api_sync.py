@@ -4,6 +4,7 @@ The worker functions are monkeypatched — no upstream network calls and no
 real sync DB writes. `SyncState` reads are exercised against the shared
 aiosqlite test engine via the `db` fixture.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -60,9 +61,7 @@ def test_post_incremental_returns_202(sync_key, client, monkeypatch):
         return None
 
     monkeypatch.setattr(sync_router, "sync_incremental", noop)
-    response = client.post(
-        "/api/sync", headers=API_HEADERS, json={"mode": "incremental"}
-    )
+    response = client.post("/api/sync", headers=API_HEADERS, json={"mode": "incremental"})
     assert response.status_code == 202
     assert response.json() == {"status": "started", "mode": "incremental"}
 
@@ -88,9 +87,7 @@ def test_post_full_returns_202(sync_key, client, monkeypatch):
 
 
 def test_post_invalid_mode_returns_422(sync_key, client):
-    response = client.post(
-        "/api/sync", headers=API_HEADERS, json={"mode": "bogus"}
-    )
+    response = client.post("/api/sync", headers=API_HEADERS, json={"mode": "bogus"})
     assert response.status_code == 422
 
 

@@ -17,6 +17,7 @@ observed on BSC):
 
   rebalancing, grid_trading, yield_optimisation, health_factor_monitoring, other
 """
+
 from __future__ import annotations
 
 from typing import Final

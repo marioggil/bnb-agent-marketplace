@@ -11,6 +11,7 @@ singleton with a clean override without re-importing.
 Spec: `sdd/marketplace-scaffold/spec/app-bootstrap` (#24) R6.
 Design: D5 (config boundary), id 26.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -209,9 +210,7 @@ class Settings(BaseSettings):
         # the app refuses to start instead of silently signing with "change-me".
         stripped = v.strip()
         if not stripped or stripped.startswith("change-me"):
-            raise ValueError(
-                "SECRET_KEY must be set to a real random value (see .env.example)"
-            )
+            raise ValueError("SECRET_KEY must be set to a real random value (see .env.example)")
         return v
 
     @field_validator("log_level")

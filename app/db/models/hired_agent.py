@@ -6,6 +6,7 @@ FU-1 shipped the stub (status='pending', no payment data); the x402 change
 needed; `pending` rows past `challenge_expiry` are cancelled lazily by the
 TTL sweep inside create_hire (spec H3).
 """
+
 from __future__ import annotations
 
 import enum

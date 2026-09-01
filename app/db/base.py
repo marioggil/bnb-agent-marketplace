@@ -4,6 +4,7 @@ All FKs, indexes, and unique constraints in the project use this convention so
 Alembic autogenerate produces stable names and downgrade scripts remain
 predictable.
 """
+
 from __future__ import annotations
 
 from sqlalchemy import MetaData

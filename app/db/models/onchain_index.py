@@ -4,6 +4,7 @@ The indexer worker scans BSC via Alchemy RPC and populates these tables.
 Queries against these tables are local (no RPC) and support marketplace
 analytics: hire trends, wallet activity, agent trading history.
 """
+
 from __future__ import annotations
 
 import enum
@@ -61,9 +62,7 @@ class OnchainTransfer(Base):
 
     # ---- Chain metadata --------------------------------------------------
     block_number: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     tx_hash: Mapped[str] = mapped_column(String(_TX_HASH_LEN), nullable=False)
 
     # ---- Classification --------------------------------------------------
@@ -114,17 +113,13 @@ class OnchainAgentEvent(Base):
     token_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
     # ---- Event details ---------------------------------------------------
-    event_type: Mapped[str] = mapped_column(
-        String(32), nullable=False
-    )  # 'mint' | 'transfer'
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)  # 'mint' | 'transfer'
     from_address: Mapped[str] = mapped_column(String(_ADDRESS_LEN), nullable=False)
     to_address: Mapped[str] = mapped_column(String(_ADDRESS_LEN), nullable=False)
 
     # ---- Chain metadata --------------------------------------------------
     block_number: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     tx_hash: Mapped[str] = mapped_column(String(_TX_HASH_LEN), nullable=False)
 
     __table_args__ = (

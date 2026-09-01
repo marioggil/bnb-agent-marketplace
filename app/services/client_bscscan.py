@@ -5,6 +5,7 @@ BSC RPC endpoint. Scans blocks in 10-block chunks (free tier limit).
 
 Reference: https://docs.alchemy.com/reference/token-transfer-events
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -78,9 +79,7 @@ class AlchemyOnchainClient:
                 if "result" in data:
                     return data
                 elif "error" in data:
-                    logger.warning(
-                        "Alchemy RPC error: %s", data["error"].get("message", "unknown")
-                    )
+                    logger.warning("Alchemy RPC error: %s", data["error"].get("message", "unknown"))
                     return data
                 return None
             except httpx.HTTPError as e:

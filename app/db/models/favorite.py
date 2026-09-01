@@ -4,6 +4,7 @@ A favorite is a thin join from a wallet to a cached agent. The cascade on
 delete is intentionally one-way: removing a user or a cached agent drops
 their favorites; a user only removes one favorite at a time via the API.
 """
+
 from __future__ import annotations
 
 from datetime import datetime

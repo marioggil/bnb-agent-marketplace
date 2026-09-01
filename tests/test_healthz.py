@@ -3,6 +3,7 @@
 Spec: `sdd/marketplace-scaffold-tests/spec` bootstrap-tests R1.
 W5 (503 when DB engine is down) is OUT OF SCOPE for FU-1.
 """
+
 from __future__ import annotations
 
 

@@ -16,6 +16,7 @@ This is a one-shot helper, not a long-running worker. Once you have
 agents in the table, use `python -m app.worker.sync` to keep them
 up to date.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -128,7 +129,10 @@ async def _enrich_and_upsert(
                 await session.commit()
                 logger.info(
                     "seed enrich: progress=%s/%s upserted=%s not_found=%s",
-                    idx, len(token_ids), upserted, not_found,
+                    idx,
+                    len(token_ids),
+                    upserted,
+                    not_found,
                 )
             # Stay under the 50 rpm free tier (1.2 s/request).
             if idx < len(token_ids) and detail_sleep_s > 0:
@@ -162,11 +166,11 @@ async def main(argv: Sequence[str] | None = None) -> int:
         )
         logger.info(
             "seed discover: fetched=%s bsc_candidates=%s skipped_wrong_chain=%s",
-            fetched, len(token_ids), skipped_wrong_chain,
+            fetched,
+            len(token_ids),
+            skipped_wrong_chain,
         )
-        upserted, not_found = await _enrich_and_upsert(
-            client, token_ids, args.detail_sleep
-        )
+        upserted, not_found = await _enrich_and_upsert(client, token_ids, args.detail_sleep)
 
     duration = time.monotonic() - started
     print(

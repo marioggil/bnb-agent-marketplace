@@ -252,9 +252,7 @@ def _platform_expression(platform: str, dialect: str = "postgresql") -> Any:
     # termix uses IS NOT NULL which can yield NULL for agents without
     # offchain_content at all; coerce to false so ~or_(evo, termix) works.
     termix = func.coalesce(
-        _json_text(AgentCache.raw_metadata, ["offchain_content", "termix"], dialect).is_not(
-            None
-        ),
+        _json_text(AgentCache.raw_metadata, ["offchain_content", "termix"], dialect).is_not(None),
         false(),
     )
     if dialect == "postgresql":
@@ -395,8 +393,11 @@ def _build_agent_profile(agent: Any) -> dict[str, Any]:
         "offchain_attributes": off.get("attributes") or [],
         "offchain_image": off.get("image"),
         "domain_proof": next(
-            (a["value"] for a in (off.get("attributes") or [])
-             if isinstance(a, dict) and a.get("trait_type") == "Domain proof"),
+            (
+                a["value"]
+                for a in (off.get("attributes") or [])
+                if isinstance(a, dict) and a.get("trait_type") == "Domain proof"
+            ),
             None,
         ),
         # OASF runtime data

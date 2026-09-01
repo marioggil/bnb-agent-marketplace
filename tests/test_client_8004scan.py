@@ -2,6 +2,7 @@
 
 Spec: `sdd/marketplace-scaffold-tests/spec` agents-tests R5-R8.
 """
+
 from __future__ import annotations
 
 import time
@@ -19,12 +20,21 @@ async def test_429_retry_after_honored(respx_mock):
     route = respx_mock.get(f"{BASE}/agents/56/42")
     route.side_effect = [
         httpx.Response(429, headers={"Retry-After": "1"}),
-        httpx.Response(200, json={
-            "agent_id": "56:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432:42",
-            "chain_id": 56, "token_id": 42, "registry": "0x8004...",
-            "name": "A", "x402_supported": True, "supported_protocols": ["oasf"],
-            "average_score": 80.0, "total_feedbacks": 3, "is_verified": True,
-        }),
+        httpx.Response(
+            200,
+            json={
+                "agent_id": "56:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432:42",
+                "chain_id": 56,
+                "token_id": 42,
+                "registry": "0x8004...",
+                "name": "A",
+                "x402_supported": True,
+                "supported_protocols": ["oasf"],
+                "average_score": 80.0,
+                "total_feedbacks": 3,
+                "is_verified": True,
+            },
+        ),
     ]
     started = time.monotonic()
     async with Client8004Scan() as client:
@@ -54,14 +64,29 @@ async def test_iter_agents_filters_chain_mismatch(respx_mock):
     respx_mock.get(
         f"{BASE}/agents",
         params={"chain_id": 56, "page": 1, "page_size": 200},
-    ).respond(200, json=[
-        {"agent_id": "56:0x8004...:42", "chain_id": 56, "token_id": 42,
-         "registry": "0x8004...", "name": "BSC", "x402_supported": False,
-         "supported_protocols": []},
-        {"agent_id": "1:0xOther:7", "chain_id": 1, "token_id": 7,
-         "registry": "0xOther", "name": "ETH", "x402_supported": False,
-         "supported_protocols": []},
-    ])
+    ).respond(
+        200,
+        json=[
+            {
+                "agent_id": "56:0x8004...:42",
+                "chain_id": 56,
+                "token_id": 42,
+                "registry": "0x8004...",
+                "name": "BSC",
+                "x402_supported": False,
+                "supported_protocols": [],
+            },
+            {
+                "agent_id": "1:0xOther:7",
+                "chain_id": 1,
+                "token_id": 7,
+                "registry": "0xOther",
+                "name": "ETH",
+                "x402_supported": False,
+                "supported_protocols": [],
+            },
+        ],
+    )
     respx_mock.get(
         f"{BASE}/agents",
         params={"chain_id": 56, "page": 2, "page_size": 200},
@@ -73,12 +98,20 @@ async def test_iter_agents_filters_chain_mismatch(respx_mock):
 
 # R8 — upstream field drift lands in `raw`.
 async def test_field_drift_into_raw(respx_mock):
-    respx_mock.get(f"{BASE}/agents/56/42").respond(200, json={
-        "agent_id": "56:0x8004...:42", "chain_id": 56, "token_id": 42,
-        "registry": "0x8004...", "name": "Drift", "x402_supported": False,
-        "supported_protocols": [],
-        "tvl_usd": 12345.67, "socials": {"twitter": "@drift"},
-    })
+    respx_mock.get(f"{BASE}/agents/56/42").respond(
+        200,
+        json={
+            "agent_id": "56:0x8004...:42",
+            "chain_id": 56,
+            "token_id": 42,
+            "registry": "0x8004...",
+            "name": "Drift",
+            "x402_supported": False,
+            "supported_protocols": [],
+            "tvl_usd": 12345.67,
+            "socials": {"twitter": "@drift"},
+        },
+    )
     async with Client8004Scan() as client:
         result = await client.get_agent(56, 42)
     assert result is not None and result.name == "Drift"

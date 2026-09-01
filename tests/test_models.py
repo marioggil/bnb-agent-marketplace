@@ -3,6 +3,7 @@
 Spec: `sdd/marketplace-scaffold-tests/spec` models-tests R1, R4, R5.
 R2 (GENERATED category) and R3 (trigram) are `@pytest.mark.postgres`.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -12,7 +13,10 @@ from sqlalchemy.exc import IntegrityError
 from tests.conftest import _now
 
 from app.db.models.agent import (
-    AgentCache, BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id,
+    AgentCache,
+    BSC_CHAIN_ID,
+    BSC_IDENTITY_REGISTRY,
+    build_agent_id,
 )
 from app.db.models.favorite import Favorite
 from app.db.models.user import User
@@ -21,10 +25,13 @@ from app.db.models.user import User
 async def _insert(session, token_id: int, **overrides) -> AgentCache:
     row = AgentCache(
         agent_id=build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id),
-        chain_id=BSC_CHAIN_ID, token_id=token_id,
+        chain_id=BSC_CHAIN_ID,
+        token_id=token_id,
         registry_address=BSC_IDENTITY_REGISTRY,
-        supported_protocols=[], cross_chain_versions=[],
-        created_at=_now(), updated_at=_now(),
+        supported_protocols=[],
+        cross_chain_versions=[],
+        created_at=_now(),
+        updated_at=_now(),
         **overrides,
     )
     session.add(row)
@@ -38,8 +45,15 @@ async def test_unique_agent_id_rejects_duplicate(db):
     await _insert(db, 1)
     dup = AgentCache(
         agent_id=build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, 1),
-        chain_id=BSC_CHAIN_ID, token_id=99, registry_address="0xOther",
-        name="dup", supported_protocols=[], cross_chain_versions=[], raw={}, created_at=_now(), updated_at=_now(),
+        chain_id=BSC_CHAIN_ID,
+        token_id=99,
+        registry_address="0xOther",
+        name="dup",
+        supported_protocols=[],
+        cross_chain_versions=[],
+        raw={},
+        created_at=_now(),
+        updated_at=_now(),
     )
     db.add(dup)
     with pytest.raises(IntegrityError):
@@ -50,9 +64,16 @@ async def test_unique_agent_id_rejects_duplicate(db):
 async def test_unique_composite_chain_token(db):
     await _insert(db, 1)
     dup = AgentCache(
-        agent_id="56:0xOtherRegistry:1", chain_id=BSC_CHAIN_ID, token_id=1,
-        registry_address="0xOtherRegistry", name="dup",
-        supported_protocols=[], cross_chain_versions=[], raw={}, created_at=_now(), updated_at=_now(),
+        agent_id="56:0xOtherRegistry:1",
+        chain_id=BSC_CHAIN_ID,
+        token_id=1,
+        registry_address="0xOtherRegistry",
+        name="dup",
+        supported_protocols=[],
+        cross_chain_versions=[],
+        raw={},
+        created_at=_now(),
+        updated_at=_now(),
     )
     db.add(dup)
     with pytest.raises(IntegrityError):
@@ -71,24 +92,36 @@ async def test_raw_jsonb_roundtrip(db):
 # R5 — FK cascades.
 async def test_fk_cascade_user_delete_drops_favorites(db):
     address = "0x" + "11" * 20
-    db.add(User(address=address)); await db.commit()
+    db.add(User(address=address))
+    await db.commit()
     agent = await _insert(db, 100)
-    db.add(Favorite(address=address, agent_id=agent.agent_id)); await db.commit()
-    await db.delete(await db.get(User, address)); await db.commit()
-    assert await db.scalar(
-        select(Favorite).where(Favorite.address == address, Favorite.agent_id == agent.agent_id)
-    ) is None
+    db.add(Favorite(address=address, agent_id=agent.agent_id))
+    await db.commit()
+    await db.delete(await db.get(User, address))
+    await db.commit()
+    assert (
+        await db.scalar(
+            select(Favorite).where(Favorite.address == address, Favorite.agent_id == agent.agent_id)
+        )
+        is None
+    )
 
 
 async def test_fk_cascade_agent_delete_drops_favorites(db):
     address = "0x" + "22" * 20
-    db.add(User(address=address)); await db.commit()
+    db.add(User(address=address))
+    await db.commit()
     agent = await _insert(db, 200)
-    db.add(Favorite(address=address, agent_id=agent.agent_id)); await db.commit()
-    await db.delete(agent); await db.commit()
-    assert await db.scalar(
-        select(Favorite).where(Favorite.address == address, Favorite.agent_id == agent.agent_id)
-    ) is None
+    db.add(Favorite(address=address, agent_id=agent.agent_id))
+    await db.commit()
+    await db.delete(agent)
+    await db.commit()
+    assert (
+        await db.scalar(
+            select(Favorite).where(Favorite.address == address, Favorite.agent_id == agent.agent_id)
+        )
+        is None
+    )
 
 
 # R2 / R3 (postgres-only) — GENERATED col + trigram.

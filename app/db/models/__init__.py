@@ -1,4 +1,5 @@
 """SQLAlchemy ORM models. Imported for Alembic metadata discovery."""
+
 from app.db.models.agent import AgentCache, BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY
 from app.db.models.auth_nonce import AuthNonce, NONCE_TTL_SECONDS
 from app.db.models.favorite import Favorite

@@ -1,4 +1,5 @@
 """Pydantic schemas for the hire flow (challenge create, pay, status)."""
+
 from __future__ import annotations
 
 from datetime import datetime

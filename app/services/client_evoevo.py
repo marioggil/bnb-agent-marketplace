@@ -9,6 +9,7 @@ The API is simple enough that a single httpx.get with a short timeout
 and no retries is appropriate — failures are non-blocking (the detail
 page renders without the enrichment).
 """
+
 from __future__ import annotations
 
 import logging

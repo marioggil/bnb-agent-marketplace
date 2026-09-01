@@ -2,13 +2,17 @@
 
 Spec: `sdd/marketplace-scaffold-tests/spec` favorites-hires-tests R1-R4.
 """
+
 from __future__ import annotations
 
 import pytest
 from sqlalchemy import func, select
 
 from app.db.models.agent import (
-    AgentCache, BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id,
+    AgentCache,
+    BSC_CHAIN_ID,
+    BSC_IDENTITY_REGISTRY,
+    build_agent_id,
 )
 from app.db.models.favorite import Favorite
 from app.services.auth import issue_csrf
@@ -17,11 +21,20 @@ from tests.conftest import _now, _sign_in
 
 async def _seed(session, token_id: int) -> str:
     aid = build_agent_id(56, BSC_IDENTITY_REGISTRY, token_id)
-    session.add(AgentCache(
-        agent_id=aid, chain_id=BSC_CHAIN_ID, token_id=token_id,
-        registry_address=BSC_IDENTITY_REGISTRY, name=f"A{token_id}",
-        supported_protocols=[], cross_chain_versions=[], raw={}, created_at=_now(), updated_at=_now(),
-    ))
+    session.add(
+        AgentCache(
+            agent_id=aid,
+            chain_id=BSC_CHAIN_ID,
+            token_id=token_id,
+            registry_address=BSC_IDENTITY_REGISTRY,
+            name=f"A{token_id}",
+            supported_protocols=[],
+            cross_chain_versions=[],
+            raw={},
+            created_at=_now(),
+            updated_at=_now(),
+        )
+    )
     await session.commit()
     return aid
 
@@ -59,10 +72,15 @@ async def test_favorite_idempotent_post(client, db):
     aid = await _seed(db, 1)
     cookies, headers = _ch(cookie)
     for _ in range(2):
-        assert client.post("/api/favorites", json={"agent_id": aid},
-                           cookies=cookies, headers=headers).status_code == 201
+        assert (
+            client.post(
+                "/api/favorites", json={"agent_id": aid}, cookies=cookies, headers=headers
+            ).status_code
+            == 201
+        )
     count = await db.scalar(
-        select(func.count()).select_from(Favorite)
+        select(func.count())
+        .select_from(Favorite)
         .where(Favorite.address == address, Favorite.agent_id == aid)
     )
     assert count == 1
@@ -75,10 +93,15 @@ async def test_favorite_idempotent_postgres(client, db):
     aid = await _seed(db, 1)
     cookies, headers = _ch(cookie)
     for _ in range(2):
-        assert client.post("/api/favorites", json={"agent_id": aid},
-                           cookies=cookies, headers=headers).status_code == 201
+        assert (
+            client.post(
+                "/api/favorites", json={"agent_id": aid}, cookies=cookies, headers=headers
+            ).status_code
+            == 201
+        )
     count = await db.scalar(
-        select(func.count()).select_from(Favorite)
+        select(func.count())
+        .select_from(Favorite)
         .where(Favorite.address == address, Favorite.agent_id == aid)
     )
     assert count == 1
@@ -90,18 +113,27 @@ async def test_favorite_delete_and_not_owned(client, db):
     aid = await _seed(db, 1)
     address, cookie = _sign_in(client)
     cookies, headers = _ch(cookie)
-    assert client.post("/api/favorites", json={"agent_id": aid},
-                       cookies=cookies, headers=headers).status_code == 201
-    assert client.delete(f"/api/favorites/{aid}",
-                         cookies=cookies, headers=headers).status_code == 204
-    assert await db.scalar(
-        select(Favorite).where(Favorite.address == address, Favorite.agent_id == aid)
-    ) is None
+    assert (
+        client.post(
+            "/api/favorites", json={"agent_id": aid}, cookies=cookies, headers=headers
+        ).status_code
+        == 201
+    )
+    assert (
+        client.delete(f"/api/favorites/{aid}", cookies=cookies, headers=headers).status_code == 204
+    )
+    assert (
+        await db.scalar(
+            select(Favorite).where(Favorite.address == address, Favorite.agent_id == aid)
+        )
+        is None
+    )
     # not-owned: a different user trying to delete a row they don't own.
     _me, my_cookie = _sign_in(client)
     cookies, headers = _ch(my_cookie)
-    assert client.delete(f"/api/favorites/{aid}",
-                         cookies=cookies, headers=headers).status_code == 404
+    assert (
+        client.delete(f"/api/favorites/{aid}", cookies=cookies, headers=headers).status_code == 404
+    )
 
 
 # R4 — GET /api/favorites returns only the caller's rows.

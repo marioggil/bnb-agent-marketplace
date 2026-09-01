@@ -9,6 +9,7 @@ Order (spec R1-R4):
      from app.main's bound names).
   5. `get_db` overridden on each fresh `app` fixture.
 """
+
 from __future__ import annotations
 
 import base64
@@ -44,10 +45,23 @@ import respx  # noqa: E402
 from eth_account import Account  # noqa: E402
 from eth_account.messages import encode_defunct, encode_typed_data  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import JSON, Column, DateTime, DefaultClause, Integer, String, Table, Text, event, text  # noqa: E402
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    DefaultClause,
+    Integer,
+    String,
+    Table,
+    Text,
+    event,
+    text,
+)  # noqa: E402
 from sqlalchemy.types import TypeDecorator  # noqa: E402
 from sqlalchemy.ext.asyncio import (  # noqa: E402
-    AsyncSession, async_sessionmaker, create_async_engine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
 )
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
@@ -85,8 +99,12 @@ def _enable_sqlite_fk(dbapi_conn, _record):
     cur = dbapi_conn.cursor()
     cur.execute("PRAGMA foreign_keys=ON")
     cur.close()
+
+
 _TestSessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(
-    _TEST_ENGINE, expire_on_commit=False, class_=AsyncSession,
+    _TEST_ENGINE,
+    expire_on_commit=False,
+    class_=AsyncSession,
 )
 
 
@@ -171,9 +189,12 @@ def _patch_metadata_for_sqlite() -> None:
                 and getattr(col, "autoincrement", False)
             ):
                 col.type = Integer()
-        kept = [i for i in list(tbl.indexes)
-                if not (getattr(i, "dialect_options", None) or {}).get("postgresql")
-                and i.name not in _POSTGRES_ONLY_INDEXES]
+        kept = [
+            i
+            for i in list(tbl.indexes)
+            if not (getattr(i, "dialect_options", None) or {}).get("postgresql")
+            and i.name not in _POSTGRES_ONLY_INDEXES
+        ]
         for i in kept:
             # SQLAlchemy re-derives indexes from the model on create_all;
             # deleting them from `tbl._indexes` is not enough. Instead,
@@ -329,9 +350,11 @@ def app():
         except Exception:
             pass
     application = create_app()
+
     async def _override_get_db():
         async with _TestSessionLocal() as session:
             yield session
+
     application.dependency_overrides[get_db] = _override_get_db
     return application
 
@@ -510,7 +533,8 @@ def respx_mock():
 @pytest.fixture
 def mock_8004scan(respx_mock):
     respx_mock.get("https://8004scan.io/api/v1/public/stats").respond(
-        200, json={"total_agents": 0, "total_feedbacks": 0, "total_chains": 1},
+        200,
+        json={"total_agents": 0, "total_feedbacks": 0, "total_chains": 1},
     )
     yield respx_mock
 

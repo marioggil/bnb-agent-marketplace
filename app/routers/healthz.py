@@ -5,6 +5,7 @@ D9 (DB connectivity check). Returns 200 on success and **503 on DB ping
 failure** so the container's HEALTHCHECK (`curl -fsS`) goes red and
 Dokploy / Docker can take action (restart, remove from rotation).
 """
+
 from __future__ import annotations
 
 import logging

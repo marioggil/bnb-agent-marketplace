@@ -5,12 +5,16 @@ Spec: `sdd/x402-real-payment/spec` hires-x402 (H1-H4) + x402-payments
 the broadcaster is overridden with FakeBroadcaster; envelopes are signed
 locally with the signed-in user's keypair.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
 from app.db.models.agent import (
-    AgentCache, BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id,
+    AgentCache,
+    BSC_CHAIN_ID,
+    BSC_IDENTITY_REGISTRY,
+    build_agent_id,
 )
 from app.db.models.hired_agent import HiredAgent, HiredStatus
 from app.services.auth import issue_csrf
@@ -21,11 +25,21 @@ _PAY_TO = "0x" + "77" * 20
 
 async def _seed_agent(session, token_id: int = 1, wallet: str = _PAY_TO) -> str:
     aid = build_agent_id(56, BSC_IDENTITY_REGISTRY, token_id)
-    session.add(AgentCache(
-        agent_id=aid, chain_id=BSC_CHAIN_ID, token_id=token_id,
-        registry_address=BSC_IDENTITY_REGISTRY, name=f"A{token_id}",
-        agent_wallet=wallet, supported_protocols=[], cross_chain_versions=[], raw={}, created_at=_now(), updated_at=_now(),
-    ))
+    session.add(
+        AgentCache(
+            agent_id=aid,
+            chain_id=BSC_CHAIN_ID,
+            token_id=token_id,
+            registry_address=BSC_IDENTITY_REGISTRY,
+            name=f"A{token_id}",
+            agent_wallet=wallet,
+            supported_protocols=[],
+            cross_chain_versions=[],
+            raw={},
+            created_at=_now(),
+            updated_at=_now(),
+        )
+    )
     await session.commit()
     return aid
 
@@ -84,12 +98,14 @@ async def test_pay_double_pay_409(client, db, fake_broadcaster, signed_envelope)
     envelope = signed_envelope(account, hire["challenge"])
     first = client.post(
         f"/api/hires/{hire['id']}/pay",
-        cookies=_ck(cookie), headers={**_ch(cookie), "X-PAYMENT": envelope},
+        cookies=_ck(cookie),
+        headers={**_ch(cookie), "X-PAYMENT": envelope},
     )
     assert first.status_code == 200
     second = client.post(
         f"/api/hires/{hire['id']}/pay",
-        cookies=_ck(cookie), headers={**_ch(cookie), "X-PAYMENT": envelope},
+        cookies=_ck(cookie),
+        headers={**_ch(cookie), "X-PAYMENT": envelope},
     )
     assert second.status_code == 409
     assert second.json()["error"]["code"] == "already_paid"
@@ -136,7 +152,8 @@ async def test_pay_missing_csrf_403(client, db):
     hire = _create_hire(client, cookie, aid)
     r = client.post(
         f"/api/hires/{hire['id']}/pay",
-        cookies=_ck(cookie), headers={"X-PAYMENT": "e30="},
+        cookies=_ck(cookie),
+        headers={"X-PAYMENT": "e30="},
     )
     assert r.status_code == 403
     assert r.json()["error"]["code"] == "forbidden"

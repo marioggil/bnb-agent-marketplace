@@ -15,6 +15,7 @@ Highlights:
 - Pydantic models use `extra="allow"` and a catch-all `raw: dict` so
   upstream field drift (R8) lands in JSONB without breaking the app.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -43,9 +44,7 @@ DEFAULT_BASE_URL: str = "https://8004scan.io/api/v1/public"
 #: Default concurrency cap per host. Spec R6 — Pro tier is 500 rpm.
 DEFAULT_MAX_CONCURRENCY: int = 4
 #: Per-request timeouts (connect, read, write, pool).
-_TIMEOUT: httpx.Timeout = httpx.Timeout(
-    connect=5.0, read=30.0, write=10.0, pool=5.0
-)
+_TIMEOUT: httpx.Timeout = httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=5.0)
 #: Consecutive 429s tolerated by `iter_agents` before it stops gracefully.
 _MAX_PAGE_RATE_LIMIT_RETRIES: int = 5
 #: Wait between page retries after a 429 (free-tier bucket resets ~60s).
@@ -266,14 +265,12 @@ class Client8004Scan:
         api_key: str | None = None,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
     ) -> None:
-        self.base_url = (base_url or os.environ.get("8004SCAN_BASE") or DEFAULT_BASE_URL).rstrip("/")
-        self.api_key = (
-            api_key if api_key is not None else os.environ.get("8004SCAN_API_KEY")
+        self.base_url = (base_url or os.environ.get("8004SCAN_BASE") or DEFAULT_BASE_URL).rstrip(
+            "/"
         )
+        self.api_key = api_key if api_key is not None else os.environ.get("8004SCAN_API_KEY")
         if not self.api_key:
-            logger.warning(
-                "8004SCAN_API_KEY not set; rate limit ~50 rpm (Pro tier 500 rpm)"
-            )
+            logger.warning("8004SCAN_API_KEY not set; rate limit ~50 rpm (Pro tier 500 rpm)")
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self._client: httpx.AsyncClient | None = None
 
@@ -412,7 +409,8 @@ class Client8004Scan:
                     logger.warning(
                         "iter_agents: giving up after %s rate-limit retries "
                         "on page %s; returning partial listing",
-                        rate_limit_strikes, page,
+                        rate_limit_strikes,
+                        page,
                     )
                     return
                 # The 50 rpm bucket resets over a minute; Retry-After is
@@ -420,7 +418,9 @@ class Client8004Scan:
                 logger.warning(
                     "iter_agents: rate limited on page %s (strike %s/%s); "
                     "waiting %ss before retrying",
-                    page, rate_limit_strikes, _MAX_PAGE_RATE_LIMIT_RETRIES,
+                    page,
+                    rate_limit_strikes,
+                    _MAX_PAGE_RATE_LIMIT_RETRIES,
                     _PAGE_RATE_LIMIT_BACKOFF_S,
                 )
                 await asyncio.sleep(_PAGE_RATE_LIMIT_BACKOFF_S)
@@ -468,9 +468,7 @@ class Client8004Scan:
 
     async def get_agent(self, chain_id: int, token_id: int) -> AgentResponse | None:
         """Fetch a single agent. Returns `None` on 404 (R7)."""
-        data = await self._request_json(
-            f"/agents/{int(chain_id)}/{int(token_id)}"
-        )
+        data = await self._request_json(f"/agents/{int(chain_id)}/{int(token_id)}")
         if data is None:
             return None
         if isinstance(data, dict):

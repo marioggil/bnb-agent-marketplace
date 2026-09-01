@@ -4,6 +4,7 @@ Used during the FU-* deploy + enrichment work to wipe orphan rows
 (token_id = 0) the first seed run left behind. Kept under
 app/_ops/ so the test suite and runtime never import it.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -15,9 +16,7 @@ from app.db.session import AsyncSessionLocal
 
 async def main() -> None:
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            text("DELETE FROM agent_cache WHERE token_id = 0")
-        )
+        result = await session.execute(text("DELETE FROM agent_cache WHERE token_id = 0"))
         await session.commit()
         print(f"deleted {result.rowcount} row(s) with token_id = 0")
 
