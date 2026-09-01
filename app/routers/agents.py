@@ -46,6 +46,12 @@ async def list_agents(
         "grid_trading",
         "yield_optimisation",
         "health_factor_monitoring",
+        "dev_automation",
+        "creative_design",
+        "marketing_content",
+        "data_analytics",
+        "security_compliance",
+        "admin_ops",
         "other",
     ]
     | None = Query(default=None),

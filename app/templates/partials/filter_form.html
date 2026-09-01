@@ -7,7 +7,7 @@
   <input type="text" name="q" value="{{ q or '' }}" placeholder="Search agents" aria-label="Search" />
   <select name="category" aria-label="Category">
     <option value="">All</option>
-    {% for c in ['rebalancing', 'grid_trading', 'yield_optimisation', 'health_factor_monitoring', 'other'] %}
+    {% for c in category_options %}
       <option value="{{ c }}" {% if c == category %}selected{% endif %}>{{ c | category_label }}</option>
     {% endfor %}
   </select>
