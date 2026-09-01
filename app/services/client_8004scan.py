@@ -320,7 +320,7 @@ class Client8004Scan:
         try:
             async for attempt in AsyncRetrying(
                 stop=stop_after_attempt(3),
-                wait=_wait_strategy,  # type: ignore[arg-type]
+                wait=_wait_strategy,
                 retry=retry_if_exception_type((httpx.HTTPError,)),
                 reraise=True,
             ):
@@ -369,7 +369,7 @@ class Client8004Scan:
         if isinstance(data, dict):
             return StatsResponse(**data)
         # Some upstreams return a top-level list. Coerce defensively.
-        return StatsResponse.model_validate({"items": data})  # type: ignore[arg-type]
+        return StatsResponse.model_validate({"items": data})
 
     async def iter_agents(
         self,
