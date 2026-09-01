@@ -29,6 +29,7 @@ from app.services.auth import (
     get_current_user,
     issue_csrf,
 )
+from app.services.categories import CATEGORIES
 
 logger = logging.getLogger(__name__)
 
@@ -73,12 +74,19 @@ templates.env.filters["img_fallback"] = _img_fallback
 templates.env.globals["pagination_window"] = _pagination_window
 
 
-#: Display names for the filter/card category values (DESIGN.md terminology).
+#: Display names for the filter/card category values (DESIGN.md terminology;
+#: taxonomy accepted from docs/category-study.md §5, sdd/doc-refresh TAX-5).
 _CATEGORY_LABELS: dict[str, str] = {
     "rebalancing": "Rebalancing",
     "grid_trading": "Grid Trading",
     "yield_optimisation": "Yield Optimization",
     "health_factor_monitoring": "Health Factor Monitoring",
+    "dev_automation": "Dev & Automation",
+    "creative_design": "Creative & Design",
+    "marketing_content": "Marketing & Content",
+    "data_analytics": "Data & Analytics",
+    "security_compliance": "Security & Compliance",
+    "admin_ops": "Admin & Ops",
     "other": "Other",
 }
 
@@ -91,6 +99,10 @@ def _category_label(value: str | None) -> str:
 
 
 templates.env.filters["category_label"] = _category_label
+
+# Single source of truth for the filter options (design D6): the select in
+# filter_form.html iterates this instead of hardcoding slugs.
+templates.env.globals["category_options"] = CATEGORIES
 
 
 # CSRF token is derived from the session cookie. Templates call `{{ csrf_token() }}`

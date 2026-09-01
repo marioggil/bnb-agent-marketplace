@@ -1,6 +1,8 @@
 {# D6 — lightweight hero + category cards, full page only (included from
    pages/home.html). The stepper and the full marketing landing are roadmap
-   and must not be built. Category cards filter the listing via ?category=. #}
+   and must not be built. Category cards filter the listing via ?category=.
+   Taxonomy accepted from docs/category-study.md §5 (sdd/doc-refresh DSG-2):
+   10 cards, 2×5 grid on desktop (≥1024px), horizontal scroll below. #}
 <section class="hero">
   <h1>Automate your investments with AI agents</h1>
   <p>Choose, activate, and let them work for you.</p>
@@ -54,5 +56,78 @@
     <h3>Health Factor Monitoring</h3>
     <p class="tagline">Protects your collateral</p>
     <p class="example">Warns before your position drops</p>
+  </a>
+  <a class="category-card" href="/?category=dev_automation">
+    <span class="cat-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
+      </svg>
+    </span>
+    <h3>Dev &amp; Automation</h3>
+    <p class="tagline">Builds, connects and automates</p>
+    <p class="example">Turns an API into a workflow</p>
+  </a>
+  <a class="category-card" href="/?category=creative_design">
+    <span class="cat-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 19l7-7 3 3-7 7-3-3z" />
+        <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+        <path d="M2 2l7.586 7.586" />
+        <circle cx="11" cy="11" r="2" />
+      </svg>
+    </span>
+    <h3>Creative &amp; Design</h3>
+    <p class="tagline">Makes images, video and brands</p>
+    <p class="example">Turns a sketch into a logo</p>
+  </a>
+  <a class="category-card" href="/?category=marketing_content">
+    <span class="cat-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 11l18-5v12L3 14v-3z" /><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+      </svg>
+    </span>
+    <h3>Marketing &amp; Content</h3>
+    <p class="tagline">Writes, publishes and grows</p>
+    <p class="example">Turns an idea into a campaign</p>
+  </a>
+  <a class="category-card" href="/?category=data_analytics">
+    <span class="cat-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" aria-hidden="true">
+        <line x1="12" y1="20" x2="12" y2="10" />
+        <line x1="18" y1="20" x2="18" y2="4" />
+        <line x1="6" y1="20" x2="6" y2="16" />
+      </svg>
+    </span>
+    <h3>Data &amp; Analytics</h3>
+    <p class="tagline">Cleans, studies and explains data</p>
+    <p class="example">Turns raw data into a report</p>
+  </a>
+  <a class="category-card" href="/?category=security_compliance">
+    <span class="cat-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      </svg>
+    </span>
+    <h3>Security &amp; Compliance</h3>
+    <p class="tagline">Audits and protects on-chain</p>
+    <p class="example">Finds the hole before the hacker</p>
+  </a>
+  <a class="category-card" href="/?category=admin_ops">
+    <span class="cat-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+        <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+      </svg>
+    </span>
+    <h3>Admin &amp; Ops</h3>
+    <p class="tagline">Runs the back office</p>
+    <p class="example">Keeps the books in order</p>
   </a>
 </section>

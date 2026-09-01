@@ -64,6 +64,26 @@ async def test_home_renders_hero_and_owner_filter(client, db):
     assert 'href="/?owner=' in body
 
 
+# sdd/doc-refresh DSG-2 — the hero renders all 10 category cards, each an
+# /?category= link with icon + name + tagline + example.
+async def test_home_renders_ten_category_cards(client, db):
+    await _seed_one(db, 1, name="Alpha")
+    body = client.get("/").text
+    assert body.count('class="category-card"') == 10
+    slugs = [
+        "rebalancing", "grid_trading", "yield_optimisation",
+        "health_factor_monitoring", "dev_automation", "creative_design",
+        "marketing_content", "data_analytics", "security_compliance",
+        "admin_ops",
+    ]
+    for slug in slugs:
+        assert f'href="/?category={slug}"' in body
+    # Spot-check taglines/examples from category-study.md §5.
+    assert "Turns an API into a workflow" in body
+    assert "Finds the hole before the hacker" in body
+    assert "Keeps the books in order" in body
+
+
 async def test_agent_detail_renders_hire_panel(client, db):
     await _seed_one(db, 1, name="Alpha")
     body = client.get("/agents/56/1").text
@@ -323,3 +343,32 @@ async def test_favorites_anon_htmx_redirect(client):
 async def test_auth_page_renders(client):
     body = client.get("/auth").text
     assert "<html" in body and "Sign in" in body
+
+
+# sdd/doc-refresh TAX-5 — the category filter select iterates the taxonomy
+# (category_options global) and renders a display label per slug.
+async def test_home_filter_offers_eleven_category_options(client, db):
+    import re
+
+    await _seed_one(db, 1, name="Alpha")
+    body = client.get("/").text
+    select = re.search(r'<select name="category".*?</select>', body, re.S)
+    assert select is not None
+    options = select.group(0)
+    labels = {
+        "rebalancing": "Rebalancing",
+        "grid_trading": "Grid Trading",
+        "yield_optimisation": "Yield Optimization",
+        "health_factor_monitoring": "Health Factor Monitoring",
+        "dev_automation": "Dev & Automation",
+        "creative_design": "Creative & Design",
+        "marketing_content": "Marketing & Content",
+        "data_analytics": "Data & Analytics",
+        "security_compliance": "Security & Compliance",
+        "admin_ops": "Admin & Ops",
+        "other": "Other",
+    }
+    assert options.count("<option") == 12  # "All" + 11 slugs
+    for slug, label in labels.items():
+        assert f'value="{slug}"' in options
+        assert label.replace("&", "&amp;") in options

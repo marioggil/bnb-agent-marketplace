@@ -42,7 +42,9 @@ async def list_agents(
     q: str | None = Query(default=None, description="Substring/ILIKE on name + description."),
     category: Literal[
         "rebalancing", "grid_trading", "yield_optimisation",
-        "health_factor_monitoring", "other",
+        "health_factor_monitoring", "dev_automation", "creative_design",
+        "marketing_content", "data_analytics", "security_compliance",
+        "admin_ops", "other",
     ] | None = Query(default=None),
     x402: bool | None = Query(default=None, description="Filter by x402_supported flag."),
     sort: str = Query(default="average_score"),

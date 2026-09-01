@@ -4,11 +4,12 @@ Spec: `sdd/marketplace-scaffold-tests/spec` agents-tests R1-R4.
 """
 from __future__ import annotations
 
-from tests.conftest import _now
-
 from app.db.models.agent import (
-    AgentCache, BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, build_agent_id,
+    BSC_IDENTITY_REGISTRY,
+    AgentCache,
+    build_agent_id,
 )
+from tests.conftest import _now
 
 
 async def _seed_five(session) -> None:
@@ -73,3 +74,34 @@ async def test_empty_fuzzy_search(client, db):
 async def test_bad_page_size_is_422(client, db):
     await _seed_five(db)
     assert client.get("/api/agents?page_size=0").status_code == 422
+
+
+# sdd/doc-refresh TAX-4 — the category filter accepts the 11 taxonomy slugs.
+async def test_filter_category_dev_automation(client, db):
+    await _seed_five(db)
+    db.add(
+        AgentCache(
+            agent_id=build_agent_id(56, BSC_IDENTITY_REGISTRY, 6),
+            chain_id=56,
+            token_id=6,
+            registry_address=BSC_IDENTITY_REGISTRY,
+            name="F",
+            average_score=60.0,
+            category="dev_automation",
+            supported_protocols=[],
+            cross_chain_versions=[],
+            raw={},
+            created_at=_now(),
+            updated_at=_now(),
+        )
+    )
+    await db.commit()
+    payload = client.get("/api/agents?category=dev_automation").json()
+    assert payload["total"] == 1
+    assert [it["name"] for it in payload["items"]] == ["F"]
+
+
+# TAX-4 — an unknown slug is rejected by the Literal validation (422).
+async def test_invalid_category_is_422(client, db):
+    await _seed_five(db)
+    assert client.get("/api/agents?category=bogus").status_code == 422
