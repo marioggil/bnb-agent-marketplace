@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,7 +37,7 @@ class HireOut(BaseModel):
 class HireCreateOut(HireOut):
     """201 response: hire row + the B402 challenge the browser signs (X1)."""
 
-    challenge: dict | None = None
+    challenge: dict[str, Any] | None = None
 
 
 class HirePayOut(BaseModel):

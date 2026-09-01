@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     BigInteger,
@@ -91,8 +91,8 @@ class AgentCache(Base):
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     star_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     watch_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    tags: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
-    categories: Mapped[list] = mapped_column(
+    tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    categories: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
 
@@ -100,7 +100,7 @@ class AgentCache(Base):
     # Service endpoints (A2A, MCP, ENS, DID) — the marketplace can
     # render deep-links to each surface from this single object.
     # ------------------------------------------------------------------
-    services: Mapped[dict] = mapped_column(
+    services: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
 
@@ -110,10 +110,10 @@ class AgentCache(Base):
     x402_supported: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
-    supported_protocols: Mapped[list] = mapped_column(
+    supported_protocols: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
-    supported_trust_models: Mapped[list] = mapped_column(
+    supported_trust_models: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
 
@@ -131,7 +131,7 @@ class AgentCache(Base):
     )
     rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
     network_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    scores: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    scores: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     # D3 — GENERATED ALWAYS AS STORED. Persisted so it can be indexed and
     # filtered directly. The expression follows the design's MVP mapping:
@@ -158,10 +158,10 @@ class AgentCache(Base):
     # ------------------------------------------------------------------
     # Cross-chain
     # ------------------------------------------------------------------
-    cross_chain_links: Mapped[list] = mapped_column(
+    cross_chain_links: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
-    cross_chain_versions: Mapped[list] = mapped_column(
+    cross_chain_versions: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
 
@@ -186,7 +186,7 @@ class AgentCache(Base):
     endpoint_last_checked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    health_status: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    health_status: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     health_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     health_checked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -218,8 +218,8 @@ class AgentCache(Base):
     # ------------------------------------------------------------------
     # Parse / metadata diagnostics
     # ------------------------------------------------------------------
-    parse_status: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    raw_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    parse_status: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    raw_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     # ------------------------------------------------------------------
     # Upstream timestamps (vs. our `created_at`/`updated_at` for the mirror).
@@ -234,7 +234,7 @@ class AgentCache(Base):
     # ------------------------------------------------------------------
     # Catch-all for fields we don't model explicitly.
     # ------------------------------------------------------------------
-    raw: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    raw: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")

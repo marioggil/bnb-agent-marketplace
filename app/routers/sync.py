@@ -33,7 +33,7 @@ from app.config import get_settings
 from app.db.models.sync_state import SyncState
 from app.db.session import get_db
 from app.errors import Conflict
-from app.services.sync_worker import sync_full, sync_incremental
+from app.services.sync_worker import SyncReport, sync_full, sync_incremental
 
 logger = logging.getLogger(__name__)
 
@@ -42,14 +42,14 @@ router = APIRouter(prefix="/api/sync", tags=["sync"])
 #: Guards task creation; the authoritative running flag is `_sync_task.done()`.
 _sync_lock = threading.Lock()
 #: Reference to the in-flight sync task (module-level so the GC keeps it alive).
-_sync_task: asyncio.Task | None = None
+_sync_task: asyncio.Task[SyncReport] | None = None
 
 
 class _SyncRequest(BaseModel):
     mode: Literal["incremental", "full"] = "incremental"
 
 
-def _consume_task_result(task: asyncio.Task) -> None:
+def _consume_task_result(task: asyncio.Task[SyncReport]) -> None:
     """Done-callback: log background run failures so they are not silent."""
     try:
         exc = task.exception()
