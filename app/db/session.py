@@ -93,7 +93,7 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
 # Back-compat aliases for callers that imported the module-level names
 # directly (the FastAPI app's lifespan and get_db still use them). They are
 # resolved lazily on first attribute access.
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     if name == "engine":
         return get_engine()
     if name == "AsyncSessionLocal":

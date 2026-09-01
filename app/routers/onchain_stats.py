@@ -395,7 +395,9 @@ async def index_block(block_number: int) -> dict[str, Any]:
     def addr(topic: str) -> str:
         return "0x" + topic[-40:]
 
-    async def get_logs(hc, address, topics):
+    async def get_logs(
+        hc: httpx.AsyncClient, address: str, topics: list[str | None]
+    ) -> list[dict[str, Any]]:
         r = await hc.post(
             RPC,
             json={
@@ -413,9 +415,10 @@ async def index_block(block_number: int) -> dict[str, Any]:
             },
         )
         data = r.json()
-        return data.get("result", []) if isinstance(data.get("result"), list) else []
+        raw = data.get("result", [])
+        return raw if isinstance(raw, list) else []
 
-    async def get_ts(hc):
+    async def get_ts(hc: httpx.AsyncClient) -> datetime:
         r = await hc.post(
             RPC,
             json={

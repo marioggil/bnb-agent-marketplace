@@ -23,6 +23,7 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from datetime import datetime
+from types import TracebackType
 from typing import Any
 
 import httpx
@@ -287,7 +288,12 @@ class Client8004Scan:
         )
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         if self._client is not None:
             await self._client.aclose()
             self._client = None
