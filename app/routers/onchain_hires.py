@@ -7,7 +7,7 @@ Provides verified hire counts from on-chain data.
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -29,7 +29,7 @@ async def get_onchain_hire_stats(
     token_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     min_amount: float = Query(default=0.01, description="Minimum $U amount to count"),
-) -> dict:
+) -> dict[str, Any]:
     """Get on-chain hire statistics for an agent.
 
     Returns verified hire count from $U token transfers on BSC.
@@ -85,7 +85,7 @@ async def get_onchain_hire_stats(
 async def get_onchain_hire_stats_by_wallet(
     wallet_address: str,
     min_amount: float = Query(default=0.01, description="Minimum $U amount to count"),
-) -> dict:
+) -> dict[str, Any]:
     """Get on-chain hire statistics by wallet address (no agent lookup)."""
     client = get_onchain_client()
     if not client.api_key:

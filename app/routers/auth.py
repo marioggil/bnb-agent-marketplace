@@ -125,7 +125,7 @@ async def post_logout(
     response: Response,
     # We accept the dep so logout is a no-op for anonymous callers — a
     # missing cookie is not an error here, just an idempotent clear.
-    _user: Annotated[User | None, Depends(get_current_user)] = None,  # type: ignore[assignment]
+    _user: Annotated[User | None, Depends(get_current_user)] = None,
 ) -> Response:
     _clear_session_cookie(response)
     # Return the SAME response object so the Set-Cookie (Max-Age=0) header

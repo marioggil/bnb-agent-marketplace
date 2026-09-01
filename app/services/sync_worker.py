@@ -103,7 +103,7 @@ async def _ensure_sync_state(session: AsyncSession) -> SyncState:
     """Return the singleton row, creating it if absent."""
     state = await session.get(SyncState, 1)
     if state is None:
-        state = SyncState(id=1, last_token_id=-1)  # type: ignore[call-arg]
+        state = SyncState(id=1, last_token_id=-1)
         session.add(state)
         await session.flush()
     return state

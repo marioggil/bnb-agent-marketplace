@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select, text
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api/onchain", tags=["onchain"])
 async def get_agent_onchain_stats(
     agent_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> dict:
+) -> dict[str, Any]:
     """Get on-chain hire stats for an agent from the indexed database.
 
     Returns hire count, total volume, unique wallets, and trend data.
@@ -92,7 +92,7 @@ async def get_agent_onchain_stats(
 async def get_wallet_onchain_stats(
     wallet_address: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> dict:
+) -> dict[str, Any]:
     """Get on-chain stats for a wallet address (sender or receiver)."""
     from app.db.models.onchain_index import OnchainTransfer
 
@@ -145,7 +145,7 @@ async def get_wallet_onchain_stats(
 async def get_global_trends(
     db: Annotated[AsyncSession, Depends(get_db)],
     days: int = Query(default=30, ge=1, le=365),
-) -> dict:
+) -> dict[str, Any]:
     """Get global on-chain transfer trends for the marketplace."""
     from app.db.models.onchain_index import OnchainTransfer
 
@@ -213,7 +213,7 @@ async def get_global_trends(
 @router.get("/health")
 async def indexer_health(
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> dict:
+) -> dict[str, Any]:
     """Check indexer health: last indexed block and counts for both tables."""
     import httpx
 
@@ -281,7 +281,7 @@ async def indexer_health(
 @router.get("/test-block/{block_number}")
 async def test_block_transfers(
     block_number: int,
-) -> dict:
+) -> dict[str, Any]:
     """TEMP: Test if Alchemy can see $U transfers at a specific block."""
     import httpx
 
@@ -371,7 +371,7 @@ async def test_block_transfers(
 
 
 @router.get("/index/{block_number}")
-async def index_block(block_number: int) -> dict:
+async def index_block(block_number: int) -> dict[str, Any]:
     """Index a single block: scan $U transfers + NFT events, insert into DB."""
     from datetime import datetime, timezone
 
@@ -525,7 +525,7 @@ async def index_block(block_number: int) -> dict:
 
 
 @router.get("/backfill-state")
-async def backfill_state() -> dict:
+async def backfill_state() -> dict[str, Any]:
     """Show backfill worker state and DB state."""
     from sqlalchemy import text
 
@@ -555,7 +555,7 @@ async def backfill_state() -> dict:
 
 
 @router.get("/backfill-link-agents")
-async def backfill_link_agents() -> dict:
+async def backfill_link_agents() -> dict[str, Any]:
     """Link existing transfers to agents by matching to_address with agent wallets."""
     from sqlalchemy import update
 
