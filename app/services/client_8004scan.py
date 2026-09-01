@@ -455,8 +455,6 @@ class Client8004Scan:
             if not items:
                 return
             for payload in items:
-                if not isinstance(payload, dict):
-                    continue
                 # Client-side chain filter (R2).
                 row_chain = payload.get("chain_id")
                 try:

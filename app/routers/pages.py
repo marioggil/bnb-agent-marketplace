@@ -349,8 +349,8 @@ def _build_agent_profile(agent: Any) -> dict[str, Any]:
                 )
 
     # Extract OASF data from offchain services
-    oASF_skills = []
-    oasf_domains = []
+    oASF_skills: list[str] = []
+    oasf_domains: list[str] = []
     for svc in off.get("services") or []:
         if isinstance(svc, dict) and svc.get("name") == "OASF":
             oASF_skills = svc.get("skills") or []

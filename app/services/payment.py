@@ -210,7 +210,7 @@ def build_challenge(
 # ---------------------------------------------------------------------------
 
 
-def decode_envelope(header: str) -> DecodedPayment:
+def decode_envelope(header: str | None) -> DecodedPayment:
     """Decode an X-PAYMENT / PAYMENT-SIGNATURE envelope into DecodedPayment.
 
     Accepts the D4 base64 JSON shape. Raises `InvalidEnvelope` (400) on

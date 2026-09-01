@@ -295,7 +295,7 @@ async def test_block_transfers(
     U_TOKEN = "0xcE24439F2D9C6a2289F741120FE202248B666666"
     TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
-    results = {}
+    results: dict[str, Any] = {}
 
     # Test 1: eth_getLogs for $U transfers at this block (10-block range)
     try:
@@ -433,7 +433,7 @@ async def index_block(block_number: int) -> dict[str, Any]:
             return datetime.fromtimestamp(int(data["result"]["timestamp"], 16), tz=timezone.utc)
         return datetime.now(timezone.utc)
 
-    result = {
+    result: dict[str, Any] = {
         "block": block_number,
         "transfers": 0,
         "events": 0,
