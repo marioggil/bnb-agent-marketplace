@@ -26,10 +26,11 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db.session import get_sessionmaker
@@ -180,7 +181,7 @@ async def scan_agent_nft_events(
     return all_logs
 
 
-async def _resolve_agent_wallets(session) -> dict[str, str]:
+async def _resolve_agent_wallets(session: AsyncSession) -> dict[str, str]:
     """Build a mapping: lowercase wallet_address -> agent_id."""
     from app.db.models.agent import AgentCache
 
@@ -194,7 +195,7 @@ async def _resolve_agent_wallets(session) -> dict[str, str]:
 
 async def _scan_and_store(
     client: MultiRPCClient,
-    session,
+    session: AsyncSession,
     from_block: int,
     to_block: int,
     wallet_to_agent: dict[str, str],
@@ -276,7 +277,7 @@ async def _scan_and_store(
 
 async def _scan_and_store_direct(
     rpc_url: str,
-    session,
+    session: AsyncSession,
     from_block: int,
     to_block: int,
     wallet_to_agent: dict[str, str],
@@ -297,7 +298,7 @@ async def _scan_and_store_direct(
                 r = await hc.post(
                     rpc_url, json={"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
                 )
-                return r.json()
+                return cast(dict[str, Any], r.json())
             except Exception:
                 return None
 
@@ -545,6 +546,7 @@ async def _realtime_cycle(client: MultiRPCClient) -> tuple[str, int]:
             text("SELECT COALESCE(MAX(block_number), 0) FROM onchain_transfers")
         )
         last_block = result.scalar()
+        assert last_block is not None  # COALESCE(MAX(...), 0) — SQL guarantees a value
 
         if last_block == 0:
             # First run: start from chain head minus our chunk
