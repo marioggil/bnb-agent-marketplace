@@ -632,11 +632,13 @@ async def run_indexer_loop() -> None:
 
     print("[indexer] STARTING DUAL WORKERS:", flush=True)
     print(
-        f"  Backfill:  Alchemy     {'✅' if alchemy_key else '❌'} ({BACKFILL_CHUNK_SIZE}bl/{BACKFILL_INTERVAL}s)",
+        f"  Backfill:  Alchemy     {'✅' if alchemy_key else '❌'} "
+        f"({BACKFILL_CHUNK_SIZE}bl/{BACKFILL_INTERVAL}s)",
         flush=True,
     )
     print(
-        f"  Realtime:  Chainstack  {'✅' if chainstack_key else '❌'} ({REALTIME_CHUNK_SIZE}bl/{REALTIME_INTERVAL}s)",
+        f"  Realtime:  Chainstack  {'✅' if chainstack_key else '❌'} "
+        f"({REALTIME_CHUNK_SIZE}bl/{REALTIME_INTERVAL}s)",
         flush=True,
     )
 

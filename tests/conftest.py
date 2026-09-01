@@ -45,7 +45,7 @@ import respx  # noqa: E402
 from eth_account import Account  # noqa: E402
 from eth_account.messages import encode_defunct, encode_typed_data  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import (
+from sqlalchemy import (  # noqa: E402
     JSON,
     DateTime,
     DefaultClause,
@@ -54,7 +54,7 @@ from sqlalchemy import (
     Table,
     event,
     text,
-)  # noqa: E402
+)
 from sqlalchemy.ext.asyncio import (  # noqa: E402
     AsyncSession,
     async_sessionmaker,

@@ -117,7 +117,8 @@ async def _record_failure(session: AsyncSession, state: SyncState, token_id: int
     """
     state.failed_token_ids = await session.scalar(
         text(
-            "SELECT COALESCE(sync_state.failed_token_ids, '[]'::jsonb) || jsonb_build_array(:token_id) "
+            "SELECT COALESCE(sync_state.failed_token_ids, '[]'::jsonb) "
+            "|| jsonb_build_array(:token_id) "
             "FROM sync_state WHERE id = 1"
         ).bindparams(token_id=token_id)
     ) or [token_id]
