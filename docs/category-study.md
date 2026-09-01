@@ -1,6 +1,10 @@
 # Category Study — BNB Agent Marketplace
 
-**Status**: study for team decision — no implementation yet.
+**Status**: ✅ **accepted/implemented** — source of truth for the 10-category
+taxonomy (DESIGN.md D11). The classifier (`app/services/categories.py`),
+the hero cards and the filter options implement §4/§5 as of 2026-08-31
+(change `doc-refresh`). The study content below is preserved as the
+decision record.
 **Date**: 2026-08-26
 **Data source**: full production catalog via `GET /api/agents` (paginated, 100/page), 1606 agents, live instance.
 

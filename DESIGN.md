@@ -107,9 +107,9 @@ Implementation: dark tokens in `:root` (primary — implemented); light tokens u
 
 | Token | Range | Layout |
 |---|---|---|
-| Mobile | `< 640px` | Single column, cards stack |
-| Tablet | `640px – 1023px` | 2-column grids |
-| Desktop | `≥ 1024px` | 3–4 column grids, `main` max-width `1200px` |
+| Mobile | `< 640px` | Single column, cards stack; category hero scrolls horizontally |
+| Tablet | `640px – 1023px` | 2-column grids; category hero scrolls horizontally |
+| Desktop | `≥ 1024px` | 3–4 column grids (category hero: 2×5), `main` max-width `1200px` |
 
 ---
 
@@ -209,12 +209,14 @@ Scope decided: **T1 — creator link + hires count** (from existing data). T2+ i
 | Empty | `.empty-state`: icon + one-line explanation + action button ("No agents found — clear filters", "No favorites yet — browse agents") |
 | Loading | `.loading` spinner (neutral gray) for HTMX load-more |
 
-### Hero / category cards (decided D6: lightweight layer on home)
+### Hero / category cards (decided D6: lightweight layer on home; taxonomy D11)
 
 In scope: a compact hero + category explanation section **above the existing listing on `/`** (one partial). The full marketing layer (stepper, separate landing) is roadmap.
 
 - Hero: headline in second person ("Automate your investments with AI agents"), subline ("Choose, activate, and let them work for you"), CTA `.btn-primary` "Explore agents" (scrolls to listing / applies no filter).
-- Category cards (2×2 mobile / 4 desktop): icon + name + tagline (max 5–6 words) + concrete example. Clicking a card filters the listing to that category. Icons: Rebalancing ↔/balance, Grid Trading ▦ bars, Yield Optimization ↗, Health Factor 🛡️ shield (never a heart — reads as "favorites").
+- Category cards — **10 cards** (taxonomy accepted from `docs/category-study.md`, decision D11): icon + name + tagline (max 5–6 words) + concrete example. Clicking a card filters the listing to that category.
+- Layout (design D7): **2 rows × 5 columns** on desktop (`≥1024px`, `repeat(5, 1fr)`), **horizontal scroll** below `1024px` (reusing the 640/1024/1280 breakpoints) — all 10 cards reachable without vertical page growth.
+- Icons: Rebalancing ↔/balance, Grid Trading ▦ bars, Yield Optimization ↗, Health Factor 🛡️ shield (never a heart — reads as "favorites"), Dev & Automation `</>` code, Creative & Design ✒ pen, Marketing & Content 📣 megaphone, Data & Analytics 📊 bars, Security & Compliance 🔒 lock, Admin & Ops 📋 clipboard.
 
 ---
 
@@ -228,7 +230,7 @@ In scope: a compact hero + category explanation section **above the existing lis
 | Hire | The action verb (flat-fee, x402): "Hire this agent", "Hire for $1.00" | Buy, Rent, Contract (in UI copy) |
 | Agent | A contractible AI agent on BNB Chain | Bot, robot (except educational content) |
 | Wallet | User's BSC wallet | — |
-| Categories | Rebalancing, Grid Trading, Yield Optimization, Health Factor Monitoring | — |
+| Categories | 10 categories + other (taxonomy D11): Rebalancing, Grid Trading, Yield Optimization, Health Factor Monitoring, Dev & Automation, Creative & Design, Marketing & Content, Data & Analytics, Security & Compliance, Admin & Ops, Other | — |
 
 - Second person, short sentences, concrete examples over abstractions.
 - Never promise returns. Never frame risk as fear. The Health Factor "protects your collateral", it does not "save you from liquidation horror stories".
@@ -282,5 +284,6 @@ All design decisions are resolved. Add new decisions here as the product evolves
 | D8 | **Trust features** | ✅ T1 now: creator link + hires count (existing data). T2 wallet flags / on-chain proof, T3 recommendations — roadmap |
 | D9 | **Display font** | ✅ System stack (no webfont); revisit only if the marketing layer lands |
 | D10 | **T1 trust signals implementation** | ✅ Creator link → `/?owner=<owner_address>` home filter; hires count = paid hires, distinct users; card markup unified in `agent_card_core.html` (design alignment, 2026-08) |
+| D11 | **Category taxonomy** | ✅ 10 categories + `other` accepted from `docs/category-study.md` (2026-08-26 — **source of truth** for the taxonomy). Signal priority: termix source category → offchain tags → x402 → skill/protocol hints → `other`. Hero renders all 10 cards (2×5 grid `≥1024px`, horizontal scroll below). Sync: `sdd/doc-refresh` |
 
 Roadmap (post-hackathon): full marketing landing + stepper, wallet risk flags (T2), recommendation model (T3, Mayari), logo delivery.
