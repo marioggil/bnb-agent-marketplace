@@ -295,7 +295,7 @@ async def test_block_transfers(
     U_TOKEN = "0xcE24439F2D9C6a2289F741120FE202248B666666"
     TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
-    results = {}
+    results: dict[str, Any] = {}
 
     # Test 1: eth_getLogs for $U transfers at this block (10-block range)
     try:
@@ -395,7 +395,9 @@ async def index_block(block_number: int) -> dict[str, Any]:
     def addr(topic: str) -> str:
         return "0x" + topic[-40:]
 
-    async def get_logs(hc, address, topics):
+    async def get_logs(
+        hc: httpx.AsyncClient, address: str, topics: list[str | None]
+    ) -> list[dict[str, Any]]:
         r = await hc.post(
             RPC,
             json={
@@ -413,9 +415,10 @@ async def index_block(block_number: int) -> dict[str, Any]:
             },
         )
         data = r.json()
-        return data.get("result", []) if isinstance(data.get("result"), list) else []
+        raw = data.get("result", [])
+        return raw if isinstance(raw, list) else []
 
-    async def get_ts(hc):
+    async def get_ts(hc: httpx.AsyncClient) -> datetime:
         r = await hc.post(
             RPC,
             json={
@@ -430,7 +433,7 @@ async def index_block(block_number: int) -> dict[str, Any]:
             return datetime.fromtimestamp(int(data["result"]["timestamp"], 16), tz=timezone.utc)
         return datetime.now(timezone.utc)
 
-    result = {
+    result: dict[str, Any] = {
         "block": block_number,
         "transfers": 0,
         "events": 0,

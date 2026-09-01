@@ -150,10 +150,5 @@ warn_unused_ignores = true
 warn_unreachable = true
 # Third-party libs without stubs we use in MVP.
 [[tool.mypy.overrides]]
-module = ["respx", "eth_account.*"]
+module = ["eth_account.*"]
 ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-# Tests are smoke-level; allow gradual typing.
-module = "tests.*"
-disallow_untyped_defs = false

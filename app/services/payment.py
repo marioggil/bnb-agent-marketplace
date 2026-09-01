@@ -29,13 +29,13 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import httpx
-from eth_abi import encode as eth_abi_encode
+from eth_abi.abi import encode as eth_abi_encode
 from eth_account import Account
 from eth_account.messages import encode_typed_data
-from eth_utils import keccak
+from eth_utils.crypto import keccak
 
 from app.config import U_TOKEN_NAME, U_TOKEN_VERSION, get_settings
 from app.errors import (
@@ -210,7 +210,7 @@ def build_challenge(
 # ---------------------------------------------------------------------------
 
 
-def decode_envelope(header: str) -> DecodedPayment:
+def decode_envelope(header: str | None) -> DecodedPayment:
     """Decode an X-PAYMENT / PAYMENT-SIGNATURE envelope into DecodedPayment.
 
     Accepts the D4 base64 JSON shape. Raises `InvalidEnvelope` (400) on
@@ -319,7 +319,7 @@ def _recover_signer(decoded: DecodedPayment, *, chain_id: int, token_cfg: TokenC
         },
     )
     try:
-        return Account.recover_message(typed_data, signature=decoded.signature)
+        return cast(str, Account.recover_message(typed_data, signature=decoded.signature))
     except (TypeError, ValueError) as exc:
         raise SignatureMismatch("invalid signature or typed data") from exc
 

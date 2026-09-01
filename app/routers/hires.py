@@ -10,10 +10,10 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Request, status
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -78,7 +78,7 @@ async def sweep_expired(db: AsyncSession, user: User) -> int:
         )
         .values(status=HiredStatus.CANCELLED, updated_at=now)
     )
-    return max(0, result.rowcount or 0)
+    return max(0, cast(CursorResult[Any], result).rowcount or 0)
 
 
 @router.post("", response_model=HireCreateOut, status_code=status.HTTP_201_CREATED)

@@ -25,7 +25,7 @@ helper that test_auth and the test suite can assert on.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Callable, cast
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
@@ -317,7 +317,10 @@ def register_error_handlers(app: FastAPI) -> None:
         BroadcastFailed,
         PaymentGatewayUnconfigured,
     ):
-        app.add_exception_handler(cls, _handle_app_error)
+        app.add_exception_handler(
+            cls,
+            cast(Callable[[Request, Exception], Response], _handle_app_error),
+        )
 
     @app.exception_handler(Exception)
     async def _fallback(request: Request, exc: Exception) -> Response:  # pragma: no cover

@@ -14,7 +14,7 @@ import asyncio
 import logging
 import os
 import sys
-from typing import Sequence
+from typing import Sequence, cast
 
 from app.services.client_8004scan import (
     Client8004Scan,  # noqa: F401  (imported for warning side-effect)
@@ -72,7 +72,7 @@ def _resolve_batch(args: argparse.Namespace) -> int:
     if args.batch is not None:
         if args.batch <= 0:
             raise SystemExit("--batch must be > 0")
-        return args.batch
+        return cast(int, args.batch)
     if args.mode == "full":
         return DEFAULT_FULL_BATCH
     return DEFAULT_INCREMENTAL_BATCH

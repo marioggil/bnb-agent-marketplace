@@ -23,6 +23,7 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from datetime import datetime
+from types import TracebackType
 from typing import Any
 
 import httpx
@@ -287,7 +288,12 @@ class Client8004Scan:
         )
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         if self._client is not None:
             await self._client.aclose()
             self._client = None
@@ -430,7 +436,7 @@ class Client8004Scan:
             # 8004scan wraps every response in `{"success": true, "data": ...}`.
             # Accept that, plus the historical {items:[]} / {agents:[]} forms,
             # and a top-level list.
-            items: list[dict[str, Any]]
+            items: list[Any]
             if isinstance(data, list):
                 items = data
             elif isinstance(data, dict):
@@ -449,6 +455,8 @@ class Client8004Scan:
             if not items:
                 return
             for payload in items:
+                # Elements come from unvalidated response.json() (Any); skip
+                # anything that is not a dict instead of crashing on .get().
                 if not isinstance(payload, dict):
                     continue
                 # Client-side chain filter (R2).
