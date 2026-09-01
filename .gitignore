@@ -32,3 +32,8 @@ htmlcov/
 
 # Atl cache
 .atl/
+
+# Scratch / local tooling state (sdd/doc-refresh HYG-1)
+comANDOS.PY
+bnbagent.db
+data/
