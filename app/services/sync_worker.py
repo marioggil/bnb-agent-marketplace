@@ -334,15 +334,34 @@ async def _maybe_enrich_category(
 ) -> None:
     """If the rich mapping differs from the GENERATED default, UPDATE the row.
 
-    Spec: the worker post-pass refines `category` for rows with oasf skills
-    or sub-protocols (design D3).
+    Spec: `sdd/doc-refresh/spec` TAX-3. The classifier now receives the
+    full signal set: the source-side termix category and the offchain tags
+    (study §4/§5), plus `supported_protocols` and `x402_supported` (design
+    D1/D2). Rich metadata is read from `raw_metadata.offchain_content`,
+    falling back to the listing `tags` when the offchain content has none.
     """
-    rich = compute_category(agent.supported_protocols or [], agent.x402_supported)
-    # If the rich mapping matches the GENERATED default, skip the UPDATE.
-    if rich in {"rebalancing", "other"} and (
-        agent.x402_supported or "oasf" in (agent.supported_protocols or [])
-    ):
-        return
+    off = (agent.raw_metadata or {}).get("offchain_content") or {}
+    if not isinstance(off, dict):
+        off = {}
+    termix = off.get("termix") or {}
+    if not isinstance(termix, dict):
+        termix = {}
+    profile = termix.get("profile") or {}
+    if not isinstance(profile, dict):
+        profile = {}
+    termix_category = profile.get("category")
+    if not isinstance(termix_category, str):
+        termix_category = None
+    off_tags = off.get("tags")
+    tags = off_tags if isinstance(off_tags, list) else (agent.tags or [])
+    rich = compute_category(
+        termix_category,
+        tags,
+        agent.supported_protocols or [],
+        agent.x402_supported,
+    )
+    # If the rich mapping matches the GENERATED default (rebalancing for
+    # x402/oasf rows, other otherwise), skip the UPDATE (design D3).
     if rich in {"rebalancing", "other"}:
         return
     await session.execute(
