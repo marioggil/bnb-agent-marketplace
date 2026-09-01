@@ -122,6 +122,10 @@ async def _enrich_and_upsert(
                 continue
             row = _row_from_agent(agent, category_override="")
             await _upsert_agent(session, row)
+            # The post-pass reads the rich signals (termix category + tags)
+            # straight off `agent.raw_metadata.offchain_content`, so the
+            # seed gets the same 10-category classification as the worker
+            # (sdd/doc-refresh TAX-3).
             await _maybe_enrich_category(session, agent, row["agent_id"])
             upserted += 1
             if upserted % PROGRESS_EVERY == 0 or idx == len(token_ids):
