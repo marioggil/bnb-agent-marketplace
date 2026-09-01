@@ -22,7 +22,7 @@ import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
-from typing import Final
+from typing import Final, cast
 
 from eth_account import Account
 from eth_account.messages import encode_defunct
@@ -196,7 +196,7 @@ async def get_current_user(
     # session_id without re-parsing the signature. The cookie value itself
     # is enough to derive the CSRF token; we keep it under a private name.
     request.state.session_cookie = bnb_agent_session
-    return user
+    return cast(User, user)
 
 
 def clear_session_cookie_value() -> str:

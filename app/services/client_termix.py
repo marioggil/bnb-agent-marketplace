@@ -12,7 +12,7 @@ page renders without the enrichment).
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -34,7 +34,7 @@ async def fetch_termix_card(token_id: int) -> dict[str, Any] | None:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(url)
             resp.raise_for_status()
-            return resp.json()
+            return cast(dict[str, Any], resp.json())
     except Exception:
         logger.debug("Termix card fetch failed for token_id=%s", token_id, exc_info=True)
         return None

@@ -12,7 +12,7 @@ import asyncio
 import logging
 import os
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -74,7 +74,7 @@ class AlchemyOnchainClient:
                 client = await self._get_client()
                 resp = await client.post(self.rpc_url, json=payload)
                 resp.raise_for_status()
-                data = resp.json()
+                data = cast(dict[str, Any], resp.json())
 
                 if "result" in data:
                     return data

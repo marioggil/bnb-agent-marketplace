@@ -14,14 +14,22 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import Any, TypedDict, cast
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
+
+class _ProviderConfig(TypedDict):
+    url_template: str
+    monthly_limit: int
+    cost_per_request: int
+    rps_limit: int
+
+
 # Provider configs
-PROVIDERS = {
+PROVIDERS: dict[str, _ProviderConfig] = {
     "chainstack": {
         "url_template": "https://bsc-mainnet.core.chainstack.com/{key}",
         "monthly_limit": 3_000_000,
@@ -138,7 +146,7 @@ class MultiRPCClient:
                 client = await self._get_client(provider)
                 resp = await client.post(url, json=payload)
                 resp.raise_for_status()
-                data = resp.json()
+                data = cast(dict[str, Any], resp.json())
 
                 if "result" in data:
                     self._record_success(provider)

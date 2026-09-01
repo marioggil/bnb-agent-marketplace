@@ -14,7 +14,7 @@ import logging
 from typing import Any
 
 import httpx
-from eth_utils import keccak
+from eth_utils.crypto import keccak
 
 from app.errors import UpstreamUnavailable
 
