@@ -323,3 +323,32 @@ async def test_favorites_anon_htmx_redirect(client):
 async def test_auth_page_renders(client):
     body = client.get("/auth").text
     assert "<html" in body and "Sign in" in body
+
+
+# sdd/doc-refresh TAX-5 — the category filter select iterates the taxonomy
+# (category_options global) and renders a display label per slug.
+async def test_home_filter_offers_eleven_category_options(client, db):
+    import re
+
+    await _seed_one(db, 1, name="Alpha")
+    body = client.get("/").text
+    select = re.search(r'<select name="category".*?</select>', body, re.S)
+    assert select is not None
+    options = select.group(0)
+    labels = {
+        "rebalancing": "Rebalancing",
+        "grid_trading": "Grid Trading",
+        "yield_optimisation": "Yield Optimization",
+        "health_factor_monitoring": "Health Factor Monitoring",
+        "dev_automation": "Dev & Automation",
+        "creative_design": "Creative & Design",
+        "marketing_content": "Marketing & Content",
+        "data_analytics": "Data & Analytics",
+        "security_compliance": "Security & Compliance",
+        "admin_ops": "Admin & Ops",
+        "other": "Other",
+    }
+    assert options.count("<option") == 12  # "All" + 11 slugs
+    for slug, label in labels.items():
+        assert f'value="{slug}"' in options
+        assert label.replace("&", "&amp;") in options
