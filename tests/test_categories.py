@@ -5,6 +5,7 @@ Spec: `sdd/doc-refresh/spec` Domain 2 (TAX-1, TAX-2). Priority chain:
 -> 4) skill/protocol hints -> 5) other. Unknown termix values fall
 through, never error.
 """
+
 from __future__ import annotations
 
 import pytest

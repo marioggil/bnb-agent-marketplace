@@ -71,9 +71,15 @@ async def test_home_renders_ten_category_cards(client, db):
     body = client.get("/").text
     assert body.count('class="category-card"') == 10
     slugs = [
-        "rebalancing", "grid_trading", "yield_optimisation",
-        "health_factor_monitoring", "dev_automation", "creative_design",
-        "marketing_content", "data_analytics", "security_compliance",
+        "rebalancing",
+        "grid_trading",
+        "yield_optimisation",
+        "health_factor_monitoring",
+        "dev_automation",
+        "creative_design",
+        "marketing_content",
+        "data_analytics",
+        "security_compliance",
         "admin_ops",
     ]
     for slug in slugs:

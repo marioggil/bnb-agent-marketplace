@@ -105,6 +105,8 @@ async def test_api_key_missing_logs_warning(caplog):
         "8004SCAN_API_KEY" in r.getMessage() or "rate limit" in r.getMessage().lower()
         for r in caplog.records
     )
+
+
 # ---------------------------------------------------------------------------
 # Category post-pass (sdd/doc-refresh TAX-3): offchain termix + tags reach
 # the classifier; the UPDATE fires only when the rich mapping differs from

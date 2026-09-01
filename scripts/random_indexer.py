@@ -13,13 +13,11 @@ Usage:
 """
 
 import argparse
-import json
 import os
 import random
 import sqlite3
 import sys
 import time
-from datetime import datetime
 
 try:
     import requests
@@ -72,10 +70,13 @@ def get_used_blocks(conn):
 
 
 def mark_used(conn, block, transfers=0, events=0, status="used"):
-    conn.execute("""
+    conn.execute(
+        """
         INSERT OR REPLACE INTO used_blocks (block_number, status, transfers, events, created_at)
         VALUES (?, ?, ?, ?, datetime('now'))
-    """, (block, status, transfers, events))
+    """,
+        (block, status, transfers, events),
+    )
     conn.commit()
 
 
@@ -85,7 +86,9 @@ def show_stats(conn):
     err = conn.execute("SELECT COUNT(*) FROM used_blocks WHERE status='error'").fetchone()[0]
     pending = conn.execute("SELECT COUNT(*) FROM used_blocks WHERE status='pending'").fetchone()[0]
 
-    total_transfers = conn.execute("SELECT COALESCE(SUM(transfers), 0) FROM used_blocks").fetchone()[0]
+    total_transfers = conn.execute(
+        "SELECT COALESCE(SUM(transfers), 0) FROM used_blocks"
+    ).fetchone()[0]
     total_events = conn.execute("SELECT COALESCE(SUM(events), 0) FROM used_blocks").fetchone()[0]
 
     first = conn.execute("SELECT MIN(block_number) FROM used_blocks").fetchone()[0]
@@ -93,7 +96,11 @@ def show_stats(conn):
 
     print(f"\n{C.BOLD}📊 Indexer Stats{C.RESET}")
     print(f"{'─' * 40}")
-    print(f"  Blocks indexed:  {C.GREEN}{ok}{C.RESET} ok  |  {C.RED}{err}{C.RESET} error  |  {C.YELLOW}{pending}{C.RESET} pending  |  {total} total")
+    print(
+        "  Blocks indexed:  "
+        f"{C.GREEN}{ok}{C.RESET} ok  |  {C.RED}{err}{C.RESET} error  |  "
+        f"{C.YELLOW}{pending}{C.RESET} pending  |  {total} total"
+    )
     print(f"  Transfers $U:    {C.CYAN}{total_transfers}{C.RESET}")
     print(f"  Agent events:    {C.CYAN}{total_events}{C.RESET}")
     if first and last:
@@ -161,7 +168,11 @@ def run(args):
         return
 
     print(f"{C.CYAN}📌 Bloques seleccionados: {len(blocks)}{C.RESET}")
-    print(f"   Primeros 10: {', '.join(str(b) for b in sorted(blocks)[:10])}{'...' if len(blocks) > 10 else ''}")
+    print(
+        "   Primeros 10: "
+        f"{', '.join(str(b) for b in sorted(blocks)[:10])}"
+        f"{'...' if len(blocks) > 10 else ''}"
+    )
     print()
 
     # Mark as pending
@@ -237,8 +248,18 @@ Examples:
     )
     parser.add_argument("--from", dest="from_block", type=int, help="First block in range")
     parser.add_argument("--to", dest="to_block", type=int, help="Last block in range")
-    parser.add_argument("--count", type=int, default=DEFAULT_COUNT, help=f"Blocks to pick (default: {DEFAULT_COUNT})")
-    parser.add_argument("--delay", type=float, default=DEFAULT_DELAY, help=f"Seconds between requests (default: {DEFAULT_DELAY})")
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=DEFAULT_COUNT,
+        help=f"Blocks to pick (default: {DEFAULT_COUNT})",
+    )
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=DEFAULT_DELAY,
+        help=f"Seconds between requests (default: {DEFAULT_DELAY})",
+    )
     parser.add_argument("--show", action="store_true", help="Show stats and exit")
     parser.add_argument("--reset", action="store_true", help="Reset used blocks DB and exit")
 
