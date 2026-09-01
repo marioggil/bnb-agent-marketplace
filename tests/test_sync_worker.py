@@ -77,3 +77,120 @@ async def test_api_key_missing_logs_warning(caplog):
         for r in caplog.records
     )
 
+
+# ---------------------------------------------------------------------------
+# Category post-pass (sdd/doc-refresh TAX-3): offchain termix + tags reach
+# the classifier; the UPDATE fires only when the rich mapping differs from
+# the GENERATED default ({rebalancing, other}).
+# ---------------------------------------------------------------------------
+
+
+async def _seed_agent_row(db, token_id: int, category: str = "other") -> str:
+    from app.db.models.agent import (
+        BSC_CHAIN_ID,
+        BSC_IDENTITY_REGISTRY,
+        AgentCache,
+        build_agent_id,
+    )
+    from tests.conftest import _now
+
+    aid = build_agent_id(56, BSC_IDENTITY_REGISTRY, token_id)
+    db.add(
+        AgentCache(
+            agent_id=aid,
+            chain_id=BSC_CHAIN_ID,
+            token_id=token_id,
+            registry_address=BSC_IDENTITY_REGISTRY,
+            name=f"Agent {token_id}",
+            category=category,
+            supported_protocols=[],
+            cross_chain_versions=[],
+            raw={},
+            created_at=_now(),
+            updated_at=_now(),
+            tags=[],
+            categories=[],
+        )
+    )
+    await db.commit()
+    return aid
+
+
+async def _read_category(db, aid: str) -> str:
+    from sqlalchemy import select
+
+    from app.db.models.agent import AgentCache
+
+    row = await db.scalar(select(AgentCache).where(AgentCache.agent_id == aid))
+    assert row is not None
+    return row.category
+
+
+# TAX-3 — termix source category (priority 1) drives the UPDATE even when
+# x402 would have produced the GENERATED default.
+async def test_maybe_enrich_category_uses_offchain_termix(db):
+    from app.services.client_8004scan import AgentResponse
+    from app.services.sync_worker import _maybe_enrich_category
+
+    aid = await _seed_agent_row(db, 7)
+    agent = AgentResponse(
+        chain_id=56,
+        token_id=7,
+        supported_protocols=["Web"],
+        x402_supported=True,
+        raw_metadata={
+            "offchain_content": {
+                "termix": {"profile": {"category": "Code & Smart Contracts"}},
+            }
+        },
+    )
+    await _maybe_enrich_category(db, agent, aid)
+    assert await _read_category(db, aid) == "dev_automation"
+
+
+# TAX-3 — offchain tags (priority 2) classify when termix is absent.
+async def test_maybe_enrich_category_uses_offchain_tags(db):
+    from app.services.client_8004scan import AgentResponse
+    from app.services.sync_worker import _maybe_enrich_category
+
+    aid = await _seed_agent_row(db, 8)
+    agent = AgentResponse(
+        chain_id=56,
+        token_id=8,
+        supported_protocols=["Web"],
+        x402_supported=False,
+        raw_metadata={"offchain_content": {"tags": ["yield", "staking"]}},
+    )
+    await _maybe_enrich_category(db, agent, aid)
+    assert await _read_category(db, aid) == "yield_optimisation"
+
+
+# TAX-3 — no offchain_content: fall back to the listing tags.
+async def test_maybe_enrich_category_falls_back_to_listing_tags(db):
+    from app.services.client_8004scan import AgentResponse
+    from app.services.sync_worker import _maybe_enrich_category
+
+    aid = await _seed_agent_row(db, 9)
+    agent = AgentResponse(
+        chain_id=56,
+        token_id=9,
+        tags=["grid", "dca"],
+        supported_protocols=["Web"],
+        x402_supported=False,
+    )
+    await _maybe_enrich_category(db, agent, aid)
+    assert await _read_category(db, aid) == "grid_trading"
+
+
+# TAX-3 — rich == GENERATED default (rebalancing via x402) → no UPDATE.
+async def test_maybe_enrich_category_skips_generated_default(db):
+    from app.services.client_8004scan import AgentResponse
+    from app.services.sync_worker import _maybe_enrich_category
+
+    aid = await _seed_agent_row(db, 10, category="other")
+    agent = AgentResponse(
+        chain_id=56, token_id=10, supported_protocols=["Web"], x402_supported=True
+    )
+    await _maybe_enrich_category(db, agent, aid)
+    assert await _read_category(db, aid) == "other"
+
