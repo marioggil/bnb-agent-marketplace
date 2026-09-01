@@ -102,12 +102,15 @@ def __getattr__(name: str):
 
 
 # Re-export Base for callers that need metadata (e.g. Alembic).
+# NOTE: `engine` and `AsyncSessionLocal` are intentionally NOT in `__all__`:
+# they are lazy PEP 562 exports resolved by `__getattr__` above, so `from
+# app.db.session import *` must not claim them as module-level bindings.
+# Direct imports of both names keep working (verified: 22 call sites, zero
+# star-imports).
 __all__ = [
-    "AsyncSessionLocal",
     "Base",
     "POOL_SIZE",
     "MAX_OVERFLOW",
-    "engine",
     "get_db",
     "get_engine",
     "get_sessionmaker",
