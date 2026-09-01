@@ -38,16 +38,14 @@ from app.services.rpc_client import MultiRPCClient
 
 logger = logging.getLogger(__name__)
 
-# Contract addresses
+# Contract addresses — the indexer ALWAYS scans BSC mainnet. Both the $U
+# token and the IdentityRegistry are mainnet contracts; X402_CHAIN_ID
+# belongs to the hire payment flow, never to on-chain indexing.
 U_TOKEN_MAINNET = "0xcE24439F2D9C6a2289F741120FE202248B666666"
-U_TOKEN_TESTNET = "0xc70B8741B8B07A6d61E54fd4B20f22Fa648E5565"
 IDENTITY_REGISTRY = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
 
 # ERC-20 Transfer topic (same signature as ERC-721)
 TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
-
-# $U token creation block on BSC
-U_TOKEN_CREATION_BLOCK = 71_922_111
 
 # First block with actual $U transfers (empirically determined).
 # The first ~200K blocks after creation have no transfers or NFT events.
@@ -411,6 +409,17 @@ def get_backfill_state() -> dict[str, Any]:
     return {"last_scanned": _backfill_last_scanned}
 
 
+def _resolve_backfill_start(db_max: int) -> int:
+    """Return the block the backfill resumes from, given the DB max.
+
+    A populated DB resumes from its highest indexed block; an empty DB
+    starts at the first block with actual $U transfers. Regression fix:
+    never restart from the token creation era (72M) when the DB is
+    already populated — that re-scan takes ~500 days to reach the head.
+    """
+    return db_max if db_max > 0 else U_FIRST_TRANSFER_BLOCK - 1
+
+
 async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
     """Run one backfill cycle: scan a chunk of historical blocks.
 
@@ -454,10 +463,7 @@ async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
             """)
             )
             db_max = result.scalar() or 0
-            if db_max > U_TOKEN_CREATION_BLOCK + 1_000_000:
-                _backfill_last_scanned = U_FIRST_TRANSFER_BLOCK - 1
-            else:
-                _backfill_last_scanned = db_max if db_max > 0 else U_FIRST_TRANSFER_BLOCK - 1
+            _backfill_last_scanned = _resolve_backfill_start(db_max)
 
         from_block = _backfill_last_scanned + 1
         gap = current_block - from_block
@@ -469,7 +475,8 @@ async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
         to_block = min(current_block, from_block + BACKFILL_CHUNK_SIZE - 1)
 
         wallet_to_agent = await _resolve_agent_wallets(session)
-        u_token = U_TOKEN_MAINNET if settings.x402_chain_id == 56 else U_TOKEN_TESTNET
+        # BSC mainnet only — see the module contract constants.
+        u_token = U_TOKEN_MAINNET
 
         # Direct scan using httpx (bypasses MultiRPCClient cooldown)
         transfers, events = await _scan_and_store_direct(
@@ -532,8 +539,6 @@ async def _realtime_cycle(client: MultiRPCClient) -> tuple[str, int]:
 
     Returns: (mode, blocks_processed)
     """
-    settings = get_settings()
-
     current_block = await get_current_block(client)
     if current_block is None:
         return "error", 0
@@ -568,7 +573,8 @@ async def _realtime_cycle(client: MultiRPCClient) -> tuple[str, int]:
         to_block = min(current_block, from_block + REALTIME_CHUNK_SIZE - 1)
 
         wallet_to_agent = await _resolve_agent_wallets(session)
-        u_token = U_TOKEN_MAINNET if settings.x402_chain_id == 56 else U_TOKEN_TESTNET
+        # BSC mainnet only — see the module contract constants.
+        u_token = U_TOKEN_MAINNET
 
         transfers, events = await _scan_and_store(
             client,
