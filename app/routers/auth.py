@@ -22,16 +22,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
-from app.errors import AuthRequired, ValidationError
+from app.db.models.user import User
+from app.errors import ValidationError
 from app.services.auth import (
     SESSION_COOKIE_NAME,
-    clear_session_cookie_value,
     get_current_user,
     issue_nonce,
     issue_session,
     verify_signature,
 )
-from app.db.models.user import User
 
 logger = logging.getLogger(__name__)
 

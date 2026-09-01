@@ -8,9 +8,7 @@ predictable.
 from __future__ import annotations
 
 from sqlalchemy import MetaData
-from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm.decl_api import DeclarativeBaseNoMeta
-
 
 NAMING_CONVENTION: dict[str, str] = {
     "ix": "ix_%(column_0_label)s",

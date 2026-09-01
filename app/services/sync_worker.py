@@ -31,14 +31,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.agent import (
-    AgentCache,
     BSC_CHAIN_ID,
     BSC_IDENTITY_REGISTRY,
+    AgentCache,
     build_agent_id,
 )
 from app.db.models.sync_state import FAILED_TOKEN_IDS_CAP, SyncState
@@ -399,7 +399,7 @@ async def _enrich_and_upsert(
     for idx, token_id in enumerate(token_ids, start=1):
         try:
             agent = await client.get_agent(BSC_CHAIN_ID, token_id)
-        except UpstreamRateLimit as exc:
+        except UpstreamRateLimit:
             # The whole batch will keep hitting 429; wait for the bucket
             # to reset before the next agent instead of burning strikes.
             logger.warning(

@@ -564,7 +564,7 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
     # On-chain metrics from indexed DB
     onchain_stats = {"transfers": 0, "volume": "0", "events": 0}
     try:
-        from app.db.models.onchain_index import OnchainTransfer, OnchainAgentEvent
+        from app.db.models.onchain_index import OnchainAgentEvent, OnchainTransfer
 
         async with AsyncSessionLocal() as ocs:
             # $U transfers received by this agent

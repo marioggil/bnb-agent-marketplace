@@ -5,14 +5,12 @@ Spec: `sdd/marketplace-scaffold-tests/spec` agents-tests R1-R4.
 
 from __future__ import annotations
 
-from tests.conftest import _now
-
 from app.db.models.agent import (
-    AgentCache,
-    BSC_CHAIN_ID,
     BSC_IDENTITY_REGISTRY,
+    AgentCache,
     build_agent_id,
 )
+from tests.conftest import _now
 
 
 async def _seed_five(session) -> None:

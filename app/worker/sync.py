@@ -16,7 +16,9 @@ import os
 import sys
 from typing import Sequence
 
-from app.services.client_8004scan import Client8004Scan  # noqa: F401  (imported for warning side-effect)
+from app.services.client_8004scan import (
+    Client8004Scan,  # noqa: F401  (imported for warning side-effect)
+)
 from app.services.sync_worker import (
     DEFAULT_FULL_BATCH,
     DEFAULT_INCREMENTAL_BATCH,

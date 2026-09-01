@@ -11,9 +11,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from app.db.models.agent import (
-    AgentCache,
     BSC_CHAIN_ID,
     BSC_IDENTITY_REGISTRY,
+    AgentCache,
     build_agent_id,
 )
 from app.db.models.hired_agent import HiredAgent, HiredStatus

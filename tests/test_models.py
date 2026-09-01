@@ -10,16 +10,15 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from tests.conftest import _now
-
 from app.db.models.agent import (
-    AgentCache,
     BSC_CHAIN_ID,
     BSC_IDENTITY_REGISTRY,
+    AgentCache,
     build_agent_id,
 )
 from app.db.models.favorite import Favorite
 from app.db.models.user import User
+from tests.conftest import _now
 
 
 async def _insert(session, token_id: int, **overrides) -> AgentCache:

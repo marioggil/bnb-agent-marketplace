@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from app.config import X402_U_TOKEN_ADDRESS_TESTNET, U_TOKEN_NAME, U_TOKEN_VERSION, get_settings
+from app.config import U_TOKEN_NAME, U_TOKEN_VERSION, X402_U_TOKEN_ADDRESS_TESTNET, get_settings
 from app.errors import (
     AmountMismatch,
     ChallengeExpired,

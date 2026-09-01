@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.services.client_bscscan import AlchemyOnchainClient, U_TOKEN_MAINNET
+from app.services.client_bscscan import U_TOKEN_MAINNET, AlchemyOnchainClient
 from app.services.client_evoevo import fetch_evoevo_card
 from app.services.client_termix import fetch_termix_card
 

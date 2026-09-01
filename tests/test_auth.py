@@ -11,15 +11,15 @@ import pytest
 from sqlalchemy import update
 
 from app.db.models.agent import (
-    AgentCache,
     BSC_CHAIN_ID,
     BSC_IDENTITY_REGISTRY,
+    AgentCache,
     build_agent_id,
 )
 from app.db.models.auth_nonce import AuthNonce
 from app.db.models.user import User
 from app.services.auth import issue_csrf
-from tests.conftest import _now, _new_address_and_key, _sign_in, _sign_message
+from tests.conftest import _new_address_and_key, _now, _sign_in, _sign_message
 
 
 async def _seed_agent(session, token_id: int = 1) -> str:

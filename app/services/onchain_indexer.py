@@ -284,6 +284,7 @@ async def _scan_and_store_direct(
 ) -> tuple[int, int]:
     """Scan and store using direct httpx calls (bypasses MultiRPCClient cooldown)."""
     import httpx
+
     from app.db.models.onchain_index import OnchainAgentEvent, OnchainTransfer
 
     U_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"

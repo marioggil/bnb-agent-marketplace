@@ -21,7 +21,6 @@ from typing import Final
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 # Re-export from the models layer so callers that only need the auth constants
 # (e.g. tests) do not have to import `app.db.models` directly (D5 boundary:
 # services do not import models, but other layers do).

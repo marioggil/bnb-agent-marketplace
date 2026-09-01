@@ -32,7 +32,6 @@ from app.db.session import AsyncSessionLocal
 from app.services.client_8004scan import Client8004Scan
 from app.services.sync_worker import _maybe_enrich_category, _row_from_agent, _upsert_agent
 
-
 logger = logging.getLogger(__name__)
 
 DEFAULT_LIMIT: int = 50

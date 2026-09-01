@@ -47,26 +47,22 @@ from eth_account.messages import encode_defunct, encode_typed_data  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import (
     JSON,
-    Column,
     DateTime,
     DefaultClause,
     Integer,
     String,
     Table,
-    Text,
     event,
     text,
 )  # noqa: E402
-from sqlalchemy.types import TypeDecorator  # noqa: E402
 from sqlalchemy.ext.asyncio import (  # noqa: E402
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.pool import StaticPool  # noqa: E402
+from sqlalchemy.types import TypeDecorator  # noqa: E402
 
 import app.main as main_module  # noqa: E402
-from app.config import get_settings  # noqa: E402
 from app.db import session as session_module  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.models.agent import AgentCache  # noqa: E402

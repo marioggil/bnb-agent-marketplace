@@ -9,9 +9,9 @@ import pytest
 from sqlalchemy import func, select
 
 from app.db.models.agent import (
-    AgentCache,
     BSC_CHAIN_ID,
     BSC_IDENTITY_REGISTRY,
+    AgentCache,
     build_agent_id,
 )
 from app.db.models.favorite import Favorite
