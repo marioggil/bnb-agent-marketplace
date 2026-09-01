@@ -64,6 +64,26 @@ async def test_home_renders_hero_and_owner_filter(client, db):
     assert 'href="/?owner=' in body
 
 
+# sdd/doc-refresh DSG-2 — the hero renders all 10 category cards, each an
+# /?category= link with icon + name + tagline + example.
+async def test_home_renders_ten_category_cards(client, db):
+    await _seed_one(db, 1, name="Alpha")
+    body = client.get("/").text
+    assert body.count('class="category-card"') == 10
+    slugs = [
+        "rebalancing", "grid_trading", "yield_optimisation",
+        "health_factor_monitoring", "dev_automation", "creative_design",
+        "marketing_content", "data_analytics", "security_compliance",
+        "admin_ops",
+    ]
+    for slug in slugs:
+        assert f'href="/?category={slug}"' in body
+    # Spot-check taglines/examples from category-study.md §5.
+    assert "Turns an API into a workflow" in body
+    assert "Finds the hole before the hacker" in body
+    assert "Keeps the books in order" in body
+
+
 async def test_agent_detail_renders_hire_panel(client, db):
     await _seed_one(db, 1, name="Alpha")
     body = client.get("/agents/56/1").text
