@@ -7,7 +7,7 @@ table (populated by the background indexer). All queries are local — no RPC.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Annotated, Any
 
@@ -149,19 +149,24 @@ async def get_global_trends(
     """Get global on-chain transfer trends for the marketplace."""
     from app.db.models.onchain_index import OnchainTransfer
 
-    since = datetime.utcnow() - timedelta(days=days)
+    since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    # Daily breakdown
+    # `func.date_trunc(...)` with a SQLAlchemy label — NOT a raw text()
+    # alias. Raw `text("date_trunc('day', timestamp) as day")` executes
+    # fine but the resulting Row has no "day" key, so `row.day` raised
+    # AttributeError once rows existed (and returned 200 with empty
+    # arrays while the table was empty).
+    day_col = func.date_trunc("day", OnchainTransfer.timestamp).label("day")
     result = await db.execute(
         select(
-            text("date_trunc('day', timestamp) as day"),
+            day_col,
             func.count().label("transfers"),
             func.count(func.distinct(OnchainTransfer.from_address)).label("unique_wallets"),
             func.coalesce(func.sum(OnchainTransfer.value), 0).label("volume"),
         )
         .where(OnchainTransfer.timestamp >= since)
-        .group_by(text("day"))
-        .order_by(text("day"))
+        .group_by(day_col)
+        .order_by(day_col)
     )
     rows = result.all()
 
