@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, cast
 
@@ -104,6 +105,40 @@ async def get_block_timestamp(client: MultiRPCClient, block_number: int) -> date
         ts = int(data["result"]["timestamp"], 16)
         return datetime.fromtimestamp(ts, tz=timezone.utc)
     return None
+
+
+async def _make_ts_resolver(
+    get_ts: Callable[[int], Awaitable[datetime | None]],
+    from_block: int,
+    to_block: int,
+) -> Callable[[int], datetime]:
+    """Build a per-block timestamp resolver with at most two RPC calls.
+
+    Fetches the real timestamps of the range edges and interpolates the
+    blocks in between linearly. Falls back to ``datetime.now`` for the
+    whole range only when both edge calls fail — this replaces the old
+    per-log RPC call that silently produced ``now()`` timestamps (with
+    microseconds) for every transfer whenever the provider rejected
+    ``eth_getBlockByNumber``.
+    """
+    ts_from = await get_ts(from_block)
+    ts_to = await get_ts(to_block) if to_block != from_block else ts_from
+    if ts_from is None and ts_to is None:
+        fallback = datetime.now(timezone.utc)
+        return lambda block: fallback
+    if ts_from is None:
+        assert ts_to is not None  # both-None already returned above
+        ts_from = ts_to
+    if ts_to is None:
+        ts_to = ts_from
+    span = max(to_block - from_block, 1)
+    delta_s = (ts_to - ts_from).total_seconds() / span
+
+    def resolve(block: int) -> datetime:
+        offset = round((block - from_block) * delta_s)
+        return ts_from + timedelta(seconds=offset)
+
+    return resolve
 
 
 async def get_logs(
@@ -205,9 +240,14 @@ async def _scan_and_store(
     wallet_to_agent: dict[str, str],
     u_token: str,
     max_range: int = ALCHEMY_MAX_BLOCK_RANGE,
+    ts_getter: Callable[[int], Awaitable[datetime | None]] | None = None,
 ) -> tuple[int, int]:
     """Scan a block range and store results. Returns (transfers, events)."""
     from app.db.models.onchain_index import OnchainAgentEvent, OnchainTransfer
+
+    ts_resolver = await _make_ts_resolver(
+        ts_getter or (lambda b: get_block_timestamp(client, b)), from_block, to_block
+    )
 
     # ---- Scan $U ERC-20 transfers ----
     u_logs = await scan_u_transfers(client, from_block, to_block, u_token, max_range=max_range)
@@ -220,9 +260,7 @@ async def _scan_and_store(
         block_num = int(log["blockNumber"], 16)
         tx = log["transactionHash"]
 
-        ts = await get_block_timestamp(client, block_num)
-        if ts is None:
-            ts = datetime.now(timezone.utc)
+        ts = ts_resolver(block_num)
 
         linked_agent = wallet_to_agent.get(to_addr.lower())
 
@@ -251,9 +289,7 @@ async def _scan_and_store(
         block_num = int(log["blockNumber"], 16)
         tx = log["transactionHash"]
 
-        ts = await get_block_timestamp(client, block_num)
-        if ts is None:
-            ts = datetime.now(timezone.utc)
+        ts = ts_resolver(block_num)
 
         event_type = "mint" if from_addr == "0x" + "0" * 40 else "transfer"
 
@@ -317,11 +353,13 @@ async def _scan_and_store_direct(
                 return data["result"]
             return []
 
-        async def _get_ts(block_num: int) -> datetime:
+        async def _get_ts(block_num: int) -> datetime | None:
             data = await _call("eth_getBlockByNumber", [hex(block_num), False])
             if data and data.get("result"):
                 return datetime.fromtimestamp(int(data["result"]["timestamp"], 16), tz=timezone.utc)
-            return datetime.now(timezone.utc)
+            return None
+
+        ts_resolver = await _make_ts_resolver(_get_ts, from_block, to_block)
 
         # Scan $U transfers
         transfers_inserted = 0
@@ -335,7 +373,7 @@ async def _scan_and_store_direct(
                 value = Decimal(int(log["data"], 16)) / Decimal(10**18)
                 block_num = int(log["blockNumber"], 16)
                 tx = log["transactionHash"]
-                ts = await _get_ts(block_num)
+                ts = ts_resolver(block_num)
                 linked_agent = wallet_to_agent.get(to_addr.lower())
 
                 stmt = pg_insert(OnchainTransfer).values(
@@ -374,7 +412,7 @@ async def _scan_and_store_direct(
                     token_id = _extract_token_id(log["topics"][3])
                     block_num = int(log["blockNumber"], 16)
                     tx = log["transactionHash"]
-                    ts = await _get_ts(block_num)
+                    ts = ts_resolver(block_num)
                     event_type = "mint" if from_addr == "0x" + "0" * 40 else "transfer"
                     agent_id = build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id)
 
@@ -548,6 +586,9 @@ async def _realtime_cycle(client: MultiRPCClient) -> tuple[str, int]:
 
     Returns: (mode, blocks_processed)
     """
+    settings = get_settings()
+    alchemy_key = getattr(settings, "alchemy_key", "") or getattr(settings, "alchemy_api_key", "")
+
     current_block = await get_current_block(client)
     if current_block is None:
         return "error", 0
@@ -585,6 +626,35 @@ async def _realtime_cycle(client: MultiRPCClient) -> tuple[str, int]:
         # BSC mainnet only — see the module contract constants.
         u_token = U_TOKEN_MAINNET
 
+        # Chainstack (the logs provider) rejects eth_getBlockByNumber on
+        # the free tier, which silently produced `now()` timestamps for
+        # every transfer. Resolve timestamps via Alchemy instead, falling
+        # back to the Chainstack client when no Alchemy key is set.
+        async def _alchemy_ts(block: int) -> datetime | None:
+            if not alchemy_key:
+                return await get_block_timestamp(client, block)
+            import httpx
+
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as hc:
+                    r = await hc.post(
+                        f"https://bnb-mainnet.g.alchemy.com/v2/{alchemy_key}",
+                        json={
+                            "jsonrpc": "2.0",
+                            "method": "eth_getBlockByNumber",
+                            "params": [hex(block), False],
+                            "id": 1,
+                        },
+                    )
+                    data = r.json()
+                    if data.get("result"):
+                        return datetime.fromtimestamp(
+                            int(data["result"]["timestamp"], 16), tz=timezone.utc
+                        )
+            except Exception:
+                return None
+            return None
+
         transfers, events = await _scan_and_store(
             client,
             session,
@@ -593,6 +663,7 @@ async def _realtime_cycle(client: MultiRPCClient) -> tuple[str, int]:
             wallet_to_agent,
             u_token,
             max_range=CHAINSTACK_MAX_BLOCK_RANGE,
+            ts_getter=_alchemy_ts,
         )
 
         blocks_processed = to_block - from_block + 1
