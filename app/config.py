@@ -201,6 +201,27 @@ class Settings(BaseSettings):
         description="Chainstack API key for BSC RPC. Primary provider (cheaper for eth_getLogs).",
     )
 
+    # ---- A2A probe worker (agent-score P2) --------------------------------
+    # Lifespan task probes Termix A2A agents on a fixed cycle. Defaults per
+    # spec P2: ≤50 agents/cycle on a 60-minute cycle.
+    probe_enabled: bool = Field(
+        default=True,
+        alias="PROBE_ENABLED",
+        description="Run the A2A probe loop as a lifespan task (spec agent-probes P1).",
+    )
+    probe_chunk_size: int = Field(
+        default=50,
+        alias="PROBE_CHUNK_SIZE",
+        ge=1,
+        description="Max agents probed per cycle (≤50 per spec P2).",
+    )
+    probe_interval_min: int = Field(
+        default=60,
+        alias="PROBE_INTERVAL_MIN",
+        ge=1,
+        description="Probe cycle interval in minutes (60 per spec P2).",
+    )
+
     @field_validator("secret_key")
     @classmethod
     def _secret_key_not_empty(cls, v: str) -> str:
