@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timezone
 
 import httpx
 
@@ -222,3 +223,120 @@ async def test_maybe_enrich_category_skips_generated_default(db):
     )
     await _maybe_enrich_category(db, agent, aid)
     assert await _read_category(db, aid) == "other"
+
+
+# ---------------------------------------------------------------------------
+# agent-score P7 / design D4 — the sync upsert MUST NOT overwrite locally-owned
+# columns (health_*, activity_score, scores). The `set_` side filters them out;
+# the INSERT `row` (VALUES) keeps all 10 so the conflict-target side is intact.
+# ---------------------------------------------------------------------------
+
+
+class _FakeExcluded:
+    """Stand-in for `stmt.excluded`: every column maps to `excluded.<name>`."""
+
+    def __getattr__(self, name: str) -> str:
+        return f"excluded.{name}"
+
+
+# P7/D4 — `_build_set_exprs()` drops all 10 `_LOCAL_OWNED` keys from set_.
+def test_build_set_exprs_excludes_all_local_owned_keys():
+    from app.services.sync_worker import (
+        _LOCAL_OWNED,
+        _SET_EXPRS,
+        _build_set_exprs,
+    )
+
+    assert len(_LOCAL_OWNED) == 10
+    set_exprs = _build_set_exprs(_FakeExcluded())
+    # Every locally-owned column is absent from the conflict UPDATE side.
+    assert set(set_exprs).isdisjoint(_LOCAL_OWNED)
+    # Every remaining column the worker mirrors stays present.
+    expected = set(_SET_EXPRS) - set(_LOCAL_OWNED)
+    assert expected <= set(set_exprs)
+    # `updated_at` is still touched (the mirror's own update clock).
+    assert "updated_at" in set_exprs
+
+
+# P7/D4 — the INSERT row (VALUES) keeps all 10 locally-owned columns.
+def test_row_values_keep_local_owned_columns():
+    from app.services.client_8004scan import AgentResponse
+    from app.services.sync_worker import _LOCAL_OWNED, _row_from_agent
+
+    agent = AgentResponse(
+        chain_id=56,
+        token_id=1,
+        health_status={"overall_status": "healthy"},
+        health_score=80.0,
+        health_checked_at=datetime.now(timezone.utc),
+        endpoint_last_checked_at=datetime.now(timezone.utc),
+        endpoint_verification_error=None,
+        endpoint_verified_domain="agents.example",
+        is_endpoint_verified=True,
+        endpoint_verified_at=datetime.now(timezone.utc),
+        activity_score=87.5,
+        scores={"engagement": 91.0},
+    )
+    row = _row_from_agent(agent, category_override="")
+    assert _LOCAL_OWNED <= set(row.keys())
+    assert row["activity_score"] == 87.5
+    assert row["health_status"] == {"overall_status": "healthy"}
+
+
+# P7 scenario "Score survives full sync" — a locally-materialized
+# activity_score must survive an 8004scan-enrichment upsert.
+async def test_activity_score_survives_full_sync(db, respx_mock):
+    from decimal import Decimal
+
+    from sqlalchemy import select
+
+    from app.db.models.agent import (
+        BSC_CHAIN_ID,
+        BSC_IDENTITY_REGISTRY,
+        AgentCache,
+        build_agent_id,
+    )
+    from app.services.sync_worker import _enrich_and_upsert
+    from tests.conftest import _now
+
+    aid = build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, 123)
+    db.add(
+        AgentCache(
+            agent_id=aid,
+            chain_id=BSC_CHAIN_ID,
+            token_id=123,
+            registry_address=BSC_IDENTITY_REGISTRY,
+            name="Original",
+            activity_score=Decimal("87.50"),
+            supported_protocols=[],
+            cross_chain_versions=[],
+            raw={},
+            created_at=_now(),
+            updated_at=_now(),
+            tags=[],
+            categories=[],
+        )
+    )
+    await db.commit()
+
+    # respx-mocked 8004scan detail for the same token_id.
+    respx_mock.get(f"{BASE}/agents/56/123").respond(
+        200,
+        json={
+            "agent_id": aid,
+            "chain_id": BSC_CHAIN_ID,
+            "token_id": 123,
+            "registry": BSC_IDENTITY_REGISTRY,
+            "name": "Synced Name",
+            "x402_supported": False,
+            "supported_protocols": [],
+        },
+    )
+
+    async with Client8004Scan() as client:
+        upserted, failed, last_token_id, walked = await _enrich_and_upsert(db, client, [123], 0)
+
+    assert upserted == 1
+    row = await db.scalar(select(AgentCache).where(AgentCache.agent_id == aid))
+    assert row is not None
+    assert row.activity_score == Decimal("87.50")

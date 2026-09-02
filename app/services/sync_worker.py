@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -130,6 +130,112 @@ async def _record_failure(session: AsyncSession, state: SyncState, token_id: int
 # ---------------------------------------------------------------------------
 # Upsert
 # ---------------------------------------------------------------------------
+
+#: Column names the sync mirrors into `agent_cache` on conflict, in
+#: declaration order. Locally-owned columns (`_LOCAL_OWNED`) are filtered out
+#: at runtime via `_build_set_exprs` — the probe worker and the /score API own
+#: them and sync must not clobber their values (spec agent-score P7, D4).
+_SET_EXPRS: tuple[str, ...] = (
+    "agent_internal_id",
+    "chain_id",
+    "chain_type",
+    "token_id",
+    "contract_address",
+    "registry_address",
+    "is_testnet",
+    "owner_id",
+    "owner_address",
+    "owner_ens",
+    "owner_username",
+    "owner_avatar_url",
+    "owner_publisher_tier",
+    "owner_certified_name",
+    "creator_address",
+    "name",
+    "description",
+    "agent_type",
+    "image_url",
+    "agent_wallet",
+    "is_verified",
+    "star_count",
+    "watch_count",
+    "tags",
+    "categories",
+    "services",
+    "x402_supported",
+    "supported_protocols",
+    "supported_trust_models",
+    "average_score",
+    "total_score",
+    "total_feedbacks",
+    "total_validations",
+    "successful_validations",
+    "rank",
+    "network_rank",
+    "scores",
+    "cross_chain_links",
+    "cross_chain_versions",
+    "created_block_number",
+    "created_tx_hash",
+    "is_active",
+    "is_endpoint_verified",
+    "endpoint_verified_at",
+    "endpoint_verified_domain",
+    "endpoint_verification_error",
+    "endpoint_last_checked_at",
+    "health_status",
+    "health_score",
+    "health_checked_at",
+    "quality_score",
+    "popularity_score",
+    "activity_score",
+    "wallet_score",
+    "freshness_score",
+    "metadata_completeness_score",
+    "ens",
+    "did",
+    "mcp_server",
+    "mcp_version",
+    "a2a_endpoint",
+    "a2a_version",
+    "agent_url",
+    "parse_status",
+    "raw_metadata",
+    "upstream_created_at",
+    "upstream_updated_at",
+    "raw",
+)
+
+#: Locally-owned `agent_cache` columns the sync MUST NOT overwrite (P7, D4).
+#: The A2A probe worker and the /score API write these.
+_LOCAL_OWNED: frozenset[str] = frozenset(
+    {
+        "health_status",
+        "health_score",
+        "health_checked_at",
+        "endpoint_last_checked_at",
+        "endpoint_verification_error",
+        "endpoint_verified_domain",
+        "is_endpoint_verified",
+        "endpoint_verified_at",
+        "activity_score",
+        "scores",
+    }
+)
+
+
+def _build_set_exprs(excluded: Any) -> dict[str, Any]:
+    """Build the ON CONFLICT `set_` mapping (P7, D4).
+
+    Every `_SET_EXPRS` column except the `_LOCAL_OWNED` set is written from
+    the conflict row. `updated_at` is stamped with the database clock via
+    `func.now()` (portable: `now()` on Postgres, `CURRENT_TIMESTAMP` on
+    sqlite). The INSERT `row` still carries all 10 locally-owned columns so
+    the conflict-target side is untouched.
+    """
+    exprs = {name: getattr(excluded, name) for name in _SET_EXPRS if name not in _LOCAL_OWNED}
+    exprs["updated_at"] = func.now()
+    return exprs
 
 
 def _row_from_agent(agent: Any, category_override: str) -> dict[str, Any]:
@@ -233,97 +339,14 @@ async def _upsert_agent(session: AsyncSession, row: dict[str, Any]) -> None:
     """Idempotent ON CONFLICT upsert keyed on agent_id.
 
     Touches every column the 8004scan detail endpoint can populate so
-    re-running the seed or sync converges on the latest snapshot.
+    re-running the seed or sync converges on the latest snapshot, EXCEPT the
+    locally-owned columns (`_LOCAL_OWNED`) that the probe worker and the
+    /score API write (spec agent-score P7, design D4).
     """
     stmt = pg_insert(AgentCache).values(**row)
-    excluded = stmt.excluded
     stmt = stmt.on_conflict_do_update(
         index_elements=[AgentCache.agent_id],
-        set_={
-            # -- identity --
-            "agent_internal_id": excluded.agent_internal_id,
-            "chain_id": excluded.chain_id,
-            "chain_type": excluded.chain_type,
-            "token_id": excluded.token_id,
-            "contract_address": excluded.contract_address,
-            "registry_address": excluded.registry_address,
-            "is_testnet": excluded.is_testnet,
-            # -- owner --
-            "owner_id": excluded.owner_id,
-            "owner_address": excluded.owner_address,
-            "owner_ens": excluded.owner_ens,
-            "owner_username": excluded.owner_username,
-            "owner_avatar_url": excluded.owner_avatar_url,
-            "owner_publisher_tier": excluded.owner_publisher_tier,
-            "owner_certified_name": excluded.owner_certified_name,
-            "creator_address": excluded.creator_address,
-            # -- presentation --
-            "name": excluded.name,
-            "description": excluded.description,
-            "agent_type": excluded.agent_type,
-            "image_url": excluded.image_url,
-            "agent_wallet": excluded.agent_wallet,
-            "is_verified": excluded.is_verified,
-            "star_count": excluded.star_count,
-            "watch_count": excluded.watch_count,
-            "tags": excluded.tags,
-            "categories": excluded.categories,
-            # -- service endpoints --
-            "services": excluded.services,
-            # -- protocols / payments --
-            "x402_supported": excluded.x402_supported,
-            "supported_protocols": excluded.supported_protocols,
-            "supported_trust_models": excluded.supported_trust_models,
-            # -- scores --
-            "average_score": excluded.average_score,
-            "total_score": excluded.total_score,
-            "total_feedbacks": excluded.total_feedbacks,
-            "total_validations": excluded.total_validations,
-            "successful_validations": excluded.successful_validations,
-            "rank": excluded.rank,
-            "network_rank": excluded.network_rank,
-            "scores": excluded.scores,
-            # -- cross-chain --
-            "cross_chain_links": excluded.cross_chain_links,
-            "cross_chain_versions": excluded.cross_chain_versions,
-            # -- on-chain provenance --
-            "created_block_number": excluded.created_block_number,
-            "created_tx_hash": excluded.created_tx_hash,
-            # -- endpoint health --
-            "is_active": excluded.is_active,
-            "is_endpoint_verified": excluded.is_endpoint_verified,
-            "endpoint_verified_at": excluded.endpoint_verified_at,
-            "endpoint_verified_domain": excluded.endpoint_verified_domain,
-            "endpoint_verification_error": excluded.endpoint_verification_error,
-            "endpoint_last_checked_at": excluded.endpoint_last_checked_at,
-            "health_status": excluded.health_status,
-            "health_score": excluded.health_score,
-            "health_checked_at": excluded.health_checked_at,
-            # -- quality scores --
-            "quality_score": excluded.quality_score,
-            "popularity_score": excluded.popularity_score,
-            "activity_score": excluded.activity_score,
-            "wallet_score": excluded.wallet_score,
-            "freshness_score": excluded.freshness_score,
-            "metadata_completeness_score": excluded.metadata_completeness_score,
-            # -- supplementary identity --
-            "ens": excluded.ens,
-            "did": excluded.did,
-            "mcp_server": excluded.mcp_server,
-            "mcp_version": excluded.mcp_version,
-            "a2a_endpoint": excluded.a2a_endpoint,
-            "a2a_version": excluded.a2a_version,
-            "agent_url": excluded.agent_url,
-            # -- parse / metadata --
-            "parse_status": excluded.parse_status,
-            "raw_metadata": excluded.raw_metadata,
-            # -- upstream timestamps --
-            "upstream_created_at": excluded.upstream_created_at,
-            "upstream_updated_at": excluded.upstream_updated_at,
-            # -- catch-all --
-            "raw": excluded.raw,
-            "updated_at": text("now()"),
-        },
+        set_=_build_set_exprs(stmt.excluded),
     )
     await session.execute(stmt)
 
