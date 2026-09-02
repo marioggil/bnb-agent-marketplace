@@ -24,15 +24,15 @@
   </select>
   <select name="health" aria-label="Endpoint health">
     <option value="">All health</option>
-    {% for h in ['degraded', 'unhealthy', 'unknown', 'not_measured'] %}
+    {% for h in ['degraded', 'unhealthy', 'unknown', 'not_measured', 'healthy'] %}
       <option value="{{ h }}" {% if h == health %}selected{% endif %}>{{ h | replace('_', ' ') | capitalize }}</option>
     {% endfor %}
   </select>
   <label class="check"><input type="checkbox" name="x402" value="true"
          title="Payable via x402 — pay per request" {% if x402 %}checked{% endif %} /> x402 only</label>
   <select name="sort" aria-label="Sort">
-    {% set _sort_labels = {'average_score': 'Top rated', 'total_feedbacks': 'Most rated', 'created_at': 'Newest', 'name': 'Name', 'metadata_completeness': 'Metadata completeness', 'health_score': 'Endpoint health'} %}
-    {% for s in ['average_score', 'total_feedbacks', 'created_at', 'name', 'metadata_completeness', 'health_score'] %}
+    {% set _sort_labels = {'average_score': 'Top rated', 'total_feedbacks': 'Most rated', 'created_at': 'Newest', 'name': 'Name', 'metadata_completeness': 'Metadata completeness', 'health_score': 'Endpoint health', 'activity_score': 'Activity'} %}
+    {% for s in ['average_score', 'total_feedbacks', 'created_at', 'name', 'metadata_completeness', 'health_score', 'activity_score'] %}
       <option value="{{ s }}" {% if s == sort %}selected{% endif %}>{{ _sort_labels.get(s, s) }}</option>
     {% endfor %}
   </select>

@@ -10,6 +10,7 @@ header. The `TemplateResponse` is reused across both paths.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -167,6 +168,7 @@ async def _list_agents_page(
             "name": AgentCache.name.asc().nullslast(),
             "metadata_completeness": AgentCache.metadata_completeness_score.desc().nullslast(),
             "health_score": AgentCache.health_score.desc().nullslast(),
+            "activity_score": AgentCache.activity_score.desc().nullslast(),  # A3
         }
         sort_key = _sort_map.get(sort, AgentCache.average_score.desc().nullslast())
 
@@ -224,6 +226,53 @@ async def _hires_count(agent_ids: list[str]) -> dict[str, int]:
     async with AsyncSessionLocal() as session:
         rows = (await session.execute(q)).all()
     return {agent_id: int(count) for agent_id, count in rows}
+
+
+def _parse_compare_ids(ids: str) -> list[tuple[int, int]]:
+    """Parse `chain/token,chain/token` into pairs, skipping malformed segments.
+
+    The page is lenient (a bad segment is dropped, never a 500); the API
+    route enforces the strict regex (spec A2). Only digit/digit segments win.
+    """
+    pairs: list[tuple[int, int]] = []
+    for segment in ids.split(","):
+        segment = segment.strip()
+        match = re.fullmatch(r"(\d+)/(\d+)", segment)
+        if match is not None:
+            pairs.append((int(match.group(1)), int(match.group(2))))
+    return pairs
+
+
+async def _load_compare_rows(ids: str) -> list[dict[str, Any]]:
+    """Load + enrich the cached agents listed in `ids` for the compare table.
+
+    Each row carries `pillars` (probe + track record, local reads) so the
+    table can render activity/track/probe columns without template logic.
+    """
+    from sqlalchemy import and_, or_, select
+
+    from app.routers.agents import pillars_for_agent
+
+    pairs = _parse_compare_ids(ids)
+    if not pairs:
+        return []
+    conditions = [
+        and_(AgentCache.chain_id == chain, AgentCache.token_id == token) for chain, token in pairs
+    ]
+    async with AsyncSessionLocal() as session:
+        rows = (await session.scalars(select(AgentCache).where(or_(*conditions)))).all()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            out.append(
+                {
+                    "chain_id": row.chain_id,
+                    "token_id": row.token_id,
+                    "name": row.name,
+                    "activity_score": row.activity_score,
+                    "pillars": await pillars_for_agent(session, row.agent_id),
+                }
+            )
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -529,6 +578,23 @@ async def home(
     )
 
 
+@router.get("/agents/compare")
+async def compare_agents(request: Request, ids: str | None = None) -> Response:
+    """Side-by-side activity comparison (agent-score U3).
+
+    Declared BEFORE `/agents/{chain_id}/{token_id}` so a literal `compare`
+    first segment is never swallowed by the path-param route. HTMX callers
+    (HX-Request: true) get the `compare_table.html` fragment; plain callers
+    get the full `compare.html` wrapper.
+    """
+    rows: list[dict[str, Any]] = []
+    if ids:
+        rows = await _load_compare_rows(ids)
+    if request.headers.get("HX-Request", "").lower() == "true":
+        return _render(request, "partials/compare_table.html", {"agents": rows})
+    return _render(request, "pages/compare.html", {"agents": rows, "ids": ids})
+
+
 @router.get("/agents/{chain_id}/{token_id}")
 async def agent_detail(request: Request, chain_id: int, token_id: int) -> Response:
     """Single-agent detail page (spec #22 + web-pages-x402 W1).
@@ -572,6 +638,34 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
         mcp_info = await fetch_mcp_info(mcp_endpoint)
 
     hires = await _hires_count([row.agent_id])
+
+    # Local activity score (agent-score U2): the locally-computed composite,
+    # its per-dimension breakdown, and the latest A2A probe snapshot.
+    local_score = row.activity_score
+    local_breakdown: list[dict[str, Any]] = []
+    latest_probe: Any = None
+    async with AsyncSessionLocal() as session:
+        from app.db.models.agent_probe import AgentProbe
+        from app.services import agent_score
+
+        probe = await session.scalar(
+            select(AgentProbe)
+            .where(AgentProbe.agent_id == row.agent_id)
+            .order_by(AgentProbe.probed_at.desc())
+            .limit(1)
+        )
+        record = await agent_score.fetch_track_record(session, row.agent_id)
+        local_breakdown = agent_score.build_breakdown(
+            responded=probe.responded if probe is not None else None,
+            latency_ms=probe.latency_ms if probe is not None else None,
+            presence=probe.presence if probe is not None else None,
+            skills_count=probe.skills_count if probe is not None else None,
+            age_months=record.age_months,
+            event_count=record.event_count,
+            unique_buyers=record.unique_buyers,
+            recency_days=record.recency_days,
+        )
+        latest_probe = probe
 
     # On-chain metrics from indexed DB
     onchain_stats = {"transfers": 0, "volume": "0", "events": 0}
@@ -618,6 +712,9 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             "evoevo_card": evoevo_card,
             "mcp_info": mcp_info,
             "onchain_stats": onchain_stats,
+            "local_score": local_score,
+            "local_breakdown": local_breakdown,
+            "latest_probe": latest_probe,
         },
     )
 
