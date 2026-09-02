@@ -167,6 +167,7 @@ async def _list_agents_page(
             "name": AgentCache.name.asc().nullslast(),
             "metadata_completeness": AgentCache.metadata_completeness_score.desc().nullslast(),
             "health_score": AgentCache.health_score.desc().nullslast(),
+            "activity_score": AgentCache.activity_score.desc().nullslast(),  # A3
         }
         sort_key = _sort_map.get(sort, AgentCache.average_score.desc().nullslast())
 
