@@ -1,9 +1,9 @@
-"""Unit tests for onchain_indexer backfill resume logic.
+"""Unit tests for onchain_indexer backfill sampling logic.
 
-Regression fix: a populated DB must resume from its highest indexed block
-instead of restarting from the token creation era (~72M) and re-scanning
-~47M blocks (~500 days at the backfill pace). An empty DB starts at
-(head - 90 days) because the activity metric only consumes that window.
+The backfill is a sampler over the last 90 days, not a sequential
+scanner: a sequential scan from the first transfer block would need
+~500 days to reach the head, and resuming from db_max is useless while
+the realtime worker keeps db_max at the head.
 """
 
 from __future__ import annotations
@@ -14,31 +14,47 @@ from datetime import datetime, timezone
 from app.services.onchain_indexer import (
     BACKFILL_START_WINDOW_BLOCKS,
     U_FIRST_TRANSFER_BLOCK,
+    _backfill_window,
     _make_ts_resolver,
-    _resolve_backfill_start,
+    _pick_sample_start,
 )
 
 _HEAD = 119_431_222
 
 
-def test_resolve_backfill_start_empty_db() -> None:
-    """Empty DB starts at head - 90 days, not at the token creation era."""
-    assert _resolve_backfill_start(0, _HEAD) == _HEAD - BACKFILL_START_WINDOW_BLOCKS
+def test_backfill_window_spans_last_90_days() -> None:
+    """The sampling window is (head - 90d .. head - realtime zone)."""
+    start, end = _backfill_window(_HEAD)
+    assert start == _HEAD - BACKFILL_START_WINDOW_BLOCKS
+    assert end == _HEAD - 75  # REALTIME_CHUNK_SIZE owns the head
 
 
-def test_resolve_backfill_start_empty_db_floor() -> None:
-    """The recent window never goes below the first transfer block."""
-    assert _resolve_backfill_start(0, 75_000_000) == U_FIRST_TRANSFER_BLOCK - 1
+def test_backfill_window_floor() -> None:
+    """The window never dips below the first transfer block."""
+    # Head so low that the 90-day window lands below the floor: the floor
+    # clips it to a valid range instead of producing a negative window.
+    start, end = _backfill_window(72_500_000)
+    assert start == U_FIRST_TRANSFER_BLOCK
+    assert end == 72_500_000 - 75
+    # Head below the floor + realtime zone: no window at all.
+    assert _backfill_window(72_000_000) is None
 
 
-def test_resolve_backfill_start_resumes_from_db_max() -> None:
-    """Populated DB continues from its highest indexed block."""
-    assert _resolve_backfill_start(118_895_000, _HEAD) == 118_895_000
+def test_pick_sample_start_skips_covered_blocks() -> None:
+    """A random block that is covered is rejected for an uncovered one."""
+    covered = {100, 101, 102, 103, 104}
+    calls: list[int] = []
+
+    def fake_randint(lo: int, hi: int) -> int:
+        calls.append(1)
+        return 102 if len(calls) == 1 else 105  # first pick covered, second free
+
+    assert _pick_sample_start(100, 200, covered, randint=fake_randint) == 105
 
 
-def test_resolve_backfill_start_near_head() -> None:
-    """A DB already near the head must not restart from the creation era."""
-    assert _resolve_backfill_start(119_424_301, _HEAD) == 119_424_301
+def test_pick_sample_start_all_covered() -> None:
+    """A fully covered window returns None."""
+    assert _pick_sample_start(100, 104, {100, 101, 102, 103, 104}) is None
 
 
 def test_ts_resolver_interpolates_between_edges() -> None:

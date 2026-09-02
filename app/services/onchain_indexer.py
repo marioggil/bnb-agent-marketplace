@@ -2,9 +2,12 @@
 
 Runs TWO concurrent workers during the FastAPI lifespan:
 
-1. BACKFILL worker (Alchemy): scans historical blocks from $U token creation
+1. BACKFILL worker (Alchemy): SAMPLES the last 90 days of history
    - Uses Alchemy: 75 CU per eth_getLogs, 10 blocks/call
-   - 250 blocks/cycle, 4 min interval → ~18,750 CU/cycle → ~16.9M CU/month
+   - Picks one random uncovered chunk per cycle inside
+     (head - 18M blocks .. head - realtime zone); the activity metric
+     only consumes the recent window, and a full sequential scan of the
+     whole chain would take ~500 days.
    - Only provider supporting historical eth_getLogs on free tier
 
 2. REALTIME worker (Chainstack): scans recent blocks to stay current
@@ -24,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -453,25 +457,50 @@ def get_backfill_state() -> dict[str, Any]:
     return {"last_scanned": _backfill_last_scanned}
 
 
-def _resolve_backfill_start(db_max: int, current_block: int) -> int:
-    """Return the block the backfill resumes from, given the DB max.
+def _backfill_window(current_block: int) -> tuple[int, int] | None:
+    """Return the (start, end) of the 90-day sampling window, or None.
 
-    A populated DB resumes from its highest indexed block. An empty DB
-    starts at (head - 90 days) instead of the token creation era (~72M):
-    the activity metric only consumes the recent window, and re-scanning
-    47M blocks would take ~500 days at the backfill pace.
+    The window spans (head - 90 days .. head - realtime zone): the
+    realtime worker owns the head, and the sampling must not overlap it.
+    It never dips below the first block with actual $U transfers.
     """
-    if db_max > 0:
-        return db_max
-    recent_start = current_block - BACKFILL_START_WINDOW_BLOCKS
-    return max(recent_start, U_FIRST_TRANSFER_BLOCK - 1)
+    start = max(current_block - BACKFILL_START_WINDOW_BLOCKS, U_FIRST_TRANSFER_BLOCK)
+    end = current_block - REALTIME_CHUNK_SIZE
+    if end < start:
+        return None
+    return start, end
+
+
+def _pick_sample_start(
+    window_start: int,
+    window_end: int,
+    covered: set[int],
+    randint: Callable[[int, int], int] = random.randint,
+) -> int | None:
+    """Pick a random block inside the window that is not covered yet.
+
+    ``covered`` holds block numbers that already produced indexed rows
+    (transfers or NFT events); re-scanning them would waste Alchemy CU.
+    Returns None when the window is effectively covered.
+    """
+    if window_end - window_start + 1 <= len(covered):
+        return None
+    for _ in range(50):
+        block = randint(window_start, window_end)
+        if block not in covered:
+            return block
+    return None
 
 
 async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
-    """Run one backfill cycle: scan a chunk of historical blocks.
+    """Run one backfill cycle: sample a random chunk of the 90-day window.
 
-    Uses httpx directly for Alchemy calls to avoid MultiRPCClient cooldown issues.
-    Returns: (mode, blocks_processed)
+    The backfill is a *sampler*, not a sequential scanner: it picks a
+    random uncovered block inside (head - 90 days .. head - realtime
+    zone) and scans BACKFILL_CHUNK_SIZE blocks from it via Alchemy. The
+    realtime worker owns the head; ON CONFLICT DO NOTHING keeps repeats
+    harmless. Sequential scanning from db_max was useless while the
+    realtime worker keeps db_max at the head.
     """
     global _backfill_last_scanned
     import httpx
@@ -494,32 +523,33 @@ async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
     except Exception:
         return "error", 0
 
+    window = _backfill_window(current_block)
+    if window is None:
+        return "caught_up", 0
+    window_start, window_end = window
+
     session_factory = get_sessionmaker()
     async with session_factory() as session:
         from sqlalchemy import text
 
-        # Determine where to start.
-        if _backfill_last_scanned == 0:
-            result = await session.execute(
-                text("""
-                SELECT COALESCE(
-                    (SELECT MAX(block_number) FROM onchain_transfers),
-                    (SELECT MAX(block_number) FROM onchain_agent_events),
-                    0
-                )
-            """)
+        # Blocks already indexed inside the window (transfers or events).
+        covered = set(
+            await session.scalars(
+                text(
+                    "SELECT DISTINCT block_number FROM onchain_transfers "
+                    "WHERE block_number BETWEEN :ws AND :we "
+                    "UNION "
+                    "SELECT DISTINCT block_number FROM onchain_agent_events "
+                    "WHERE block_number BETWEEN :ws AND :we"
+                ).bindparams(ws=window_start, we=window_end)
             )
-            db_max = result.scalar() or 0
-            _backfill_last_scanned = _resolve_backfill_start(db_max, current_block)
+        )
 
-        from_block = _backfill_last_scanned + 1
-        gap = current_block - from_block
-
-        if gap <= REALTIME_CHUNK_SIZE:
+        from_block = _pick_sample_start(window_start, window_end, covered)
+        if from_block is None:
             return "caught_up", 0
 
-        # Scan a backfill chunk
-        to_block = min(current_block, from_block + BACKFILL_CHUNK_SIZE - 1)
+        to_block = min(from_block + BACKFILL_CHUNK_SIZE - 1, window_end)
 
         wallet_to_agent = await _resolve_agent_wallets(session)
         # BSC mainnet only — see the module contract constants.
@@ -536,14 +566,16 @@ async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
         )
 
         blocks_processed = to_block - from_block + 1
-        remaining = current_block - to_block
+        covered_now = len(covered)
 
-        # Advance the in-memory tracker
+        # Advance the in-memory tracker (informational — the sampler
+        # does not resume from it).
         _backfill_last_scanned = to_block
 
         print(
             f"[backfill] {transfers}T + {events}E "
-            f"({from_block:,}-{to_block:,}) | gap: {remaining:,}",
+            f"({from_block:,}-{to_block:,}) | covered: {covered_now:,} "
+            f"in {window_start:,}-{window_end:,}",
             flush=True,
         )
 
