@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import re
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -125,12 +126,13 @@ async def get_agent(
 
 async def latest_probe_for(session: AsyncSession, agent_id: str) -> AgentProbe | None:
     """The agent's most recent `agent_probes` row (or None when never probed)."""
-    return await session.scalar(
+    row = await session.scalar(
         select(AgentProbe)
         .where(AgentProbe.agent_id == agent_id)
         .order_by(AgentProbe.probed_at.desc())
         .limit(1)
     )
+    return row if isinstance(row, AgentProbe) else None
 
 
 def probe_pillar_from_row(probe: AgentProbe | None) -> ProbePillar | None:
@@ -173,7 +175,9 @@ async def pillars_for_agent(session: AsyncSession, agent_id: str) -> Pillars:
     )
 
 
-def breakdown_for(probe: AgentProbe | None, record: agent_score.TrackRecord) -> list[dict[str, Any]]:
+def breakdown_for(
+    probe: AgentProbe | None, record: agent_score.TrackRecord
+) -> list[dict[str, Any]]:
     """Flat `[{dimension, score, weight}]` breakdown for display (A1)."""
     return agent_score.build_breakdown(
         responded=probe.responded if probe is not None else None,
@@ -193,8 +197,8 @@ _IDS_RE = re.compile(r"^\d+/\d+(,\d+/\d+)*$")
 
 @router.get("/compare", response_model=CompareOut)
 async def compare_agents(
+    db: Annotated[AsyncSession, Depends(get_db)],
     ids: str = Query(description='ids like "56/123,56/456"'),
-    db: Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> CompareOut:
     """Side-by-side local comparison of cached agents (spec A2).
 
@@ -251,14 +255,16 @@ async def get_agent_score(
         track_record=track_pillar_from_record(record),
     )
 
-    score = row.activity_score
+    score: Decimal | None = row.activity_score
     if score is None:
-        score = agent_score.composite_score(
+        computed = agent_score.composite_score(
             pillars.probe.score if pillars.probe is not None else None,
             pillars.track_record.score,
         )
-        await agent_score.materialize_score(db, row.agent_id, score)
+        await agent_score.materialize_score(db, row.agent_id, computed)
         await db.commit()
+        score = Decimal(str(computed))
+    assert score is not None
 
     return ScoreOut(
         chain=row.chain_id,

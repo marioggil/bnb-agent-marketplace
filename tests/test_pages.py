@@ -381,3 +381,147 @@ async def test_home_filter_offers_eleven_category_options(client, db):
     for slug, label in labels.items():
         assert f'value="{slug}"' in options
         assert label.replace("&", "&amp;") in options
+
+
+# ---------------------------------------------------------------------------
+# agent-score U1/U2 — card badge + detail breakdown + probe live section
+# ---------------------------------------------------------------------------
+
+
+async def test_agent_card_shows_activity_badge(client, db):
+    """U1: the card renders the local activity score in average_score style."""
+    from decimal import Decimal
+
+    await _seed_one(db, 1, name="Alpha")
+    async with db.begin():
+        from app.db.models.agent import AgentCache
+
+        row = await db.scalar(select(AgentCache).where(AgentCache.token_id == 1))
+        row.activity_score = Decimal("87.5")
+    body = client.get("/").text
+    assert "87.5" in body
+    assert "activity-score" in body
+
+
+async def test_agent_card_no_activity_badge_when_null(client, db):
+    """U1: agents without a materialized score render no activity badge."""
+    await _seed_one(db, 1, name="Alpha")
+    body = client.get("/").text
+    assert "activity-score" not in body
+
+
+async def test_agent_detail_renders_activity_breakdown_and_probe(client, db):
+    """U2: detail renders local breakdown (score_dimensions markup) + probe."""
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from app.db.models.agent import AgentCache
+    from app.db.models.agent_probe import AgentProbe
+    from app.db.models.onchain_index import OnchainAgentEvent
+
+    aid = await _seed_one(db, 1, name="Alpha")
+    async with db.begin():
+        row = await db.scalar(select(AgentCache).where(AgentCache.token_id == 1))
+        row.activity_score = Decimal("87.5")
+        row.upstream_created_at = _now() - timedelta(days=183)  # ~6 months → 50
+        db.add(
+            AgentProbe(
+                agent_id=aid,
+                probed_at=_now(),
+                responded=True,
+                http_status=200,
+                latency_ms=150,
+                status="BOUND",
+                presence="online",
+                endpoint="https://agent.example/a2a",
+                skills_count=2,
+                error=None,
+            )
+        )
+        for i in range(5):
+            db.add(
+                OnchainAgentEvent(
+                    agent_id=aid,
+                    token_id=1,
+                    event_type="transfer",
+                    from_address="0x" + "1" * 40,
+                    to_address="0x" + f"{i:040x}",
+                    block_number=1,
+                    timestamp=_now() - timedelta(days=3),
+                    tx_hash="0x" + f"{i:064x}",
+                )
+            )
+    body = client.get("/agents/56/1").text
+    section = body.split('id="activity-score"', 1)[1].split("</section>", 1)[0]
+    # local score + breakdown dimensions (D7 names, not upstream score_dimensions)
+    assert "87.5" in section
+    assert "events" in section and "recency" in section
+    # probe live section (D3 probe snapshot)
+    assert "BOUND" in section and "online" in section
+    assert "Last probed" in section
+
+
+# ---------------------------------------------------------------------------
+# agent-score U3 — compare partial + page + filter_form options (D3)
+# ---------------------------------------------------------------------------
+
+
+async def test_compare_htmx_partial_returns_fragment(client, db):
+    """U3: an HTMX request for /agents/compare returns the fragment only."""
+    from decimal import Decimal
+
+    from app.db.models.agent import AgentCache
+    from app.db.models.agent_probe import AgentProbe
+
+    aid1 = await _seed_one(db, 1, name="Alpha")
+    await _seed_one(db, 2, name="Beta")
+    async with db.begin():
+        for token, score in [(1, Decimal("90")), (2, Decimal("70"))]:
+            row = await db.scalar(select(AgentCache).where(AgentCache.token_id == token))
+            row.activity_score = score
+        db.add(
+            AgentProbe(
+                agent_id=aid1,
+                probed_at=_now(),
+                responded=True,
+                http_status=200,
+                latency_ms=120,
+                status="BOUND",
+                presence="online",
+                endpoint="https://agent.example/a2a",
+                skills_count=2,
+                error=None,
+            )
+        )
+    body = client.get(
+        "/agents/compare", params={"ids": "56/1,56/2"}, headers={"HX-Request": "true"}
+    ).text
+    assert "<html" not in body
+    table = body.split('id="compare-table"', 1)[1].split("</table>", 1)[0]
+    assert "Alpha" in table and "Beta" in table
+    assert "90" in table and "70" in table
+
+
+async def test_compare_full_page(client, db):
+    """U3: a plain request renders the compare page wrapper with the table."""
+    await _seed_one(db, 1, name="Alpha")
+    await _seed_one(db, 2, name="Beta")
+    body = client.get("/agents/compare", params={"ids": "56/1,56/2"}).text
+    assert "<html" in body
+    assert "Compare agents" in body
+    assert "Alpha" in body and "Beta" in body
+
+
+async def test_compare_empty_state(client, db):
+    """U3: no ids → the partial renders the empty state."""
+    body = client.get("/agents/compare", headers={"HX-Request": "true"}).text
+    assert "No agents to compare" in body
+
+
+async def test_filter_offers_activity_sort_and_healthy_health(client, db):
+    """D3: 'Activity' sort option + 'healthy' health option in filter_form."""
+    await _seed_one(db, 1, name="Alpha")
+    body = client.get("/").text
+    assert 'value="activity_score"' in body
+    assert "Activity" in body
+    assert 'value="healthy"' in body

@@ -1,0 +1,46 @@
+{# Compare fragment (agent-score U3): side-by-side activity comparison.
+   Served by GET /agents/compare as an HTMX partial (HX-Request: true) and
+   included by pages/compare.html. `id="compare-table"` is the hx-target of
+   the compare form, so an HTMX submit swaps this whole fragment. Expects
+   `agents` in context: [{chain_id, token_id, name, activity_score, pillars}]. #}
+{% if agents %}
+<table class="compare-table" id="compare-table">
+  <thead>
+    <tr>
+      <th>Agent</th>
+      <th>Activity</th>
+      <th>Track record</th>
+      <th>Probe status</th>
+      <th>Last probed</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for a in agents %}
+    <tr>
+      <td><a href="/agents/{{ a.chain_id }}/{{ a.token_id }}">{{ a.name or (a.chain_id ~ ':' ~ a.token_id) }}</a></td>
+      <td>{{ a.activity_score or 'n/a' }}</td>
+      <td>{{ a.pillars.track_record.score if a.pillars else 'n/a' }}</td>
+      <td>
+        {% if a.pillars and a.pillars.probe %}
+          <span class="badge {% if a.pillars.probe.responded %}verified{% else %}category{% endif %}">
+            {{ 'responded' if a.pillars.probe.responded else 'no response' }}
+          </span>
+          {% if a.pillars.probe.presence %} &middot; {{ a.pillars.probe.presence }}{% endif %}
+        {% else %}
+          not measured
+        {% endif %}
+      </td>
+      <td>
+        {% if a.pillars and a.pillars.probe and a.pillars.probe.probed_at %}
+          {{ a.pillars.probe.probed_at.strftime('%Y-%m-%d %H:%M') }}
+        {% else %}
+          —
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-state" id="compare-table">No agents to compare.</p>
+{% endif %}

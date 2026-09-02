@@ -128,6 +128,43 @@
     </dl>
   </section>
 
+  <!-- Local activity score (agent-score U2): locally-computed composite
+       (0.60×probe + 0.40×track record) with per-dimension breakdown reusing
+       the score_dimensions markup, plus the latest A2A probe snapshot. -->
+  <section class="agent-profile activity-score-card" id="activity-score">
+    <h2>Activity score</h2>
+    <p class="activity-score-value">{{ local_score or 'n/a' }}/100</p>
+    {% if local_breakdown %}
+    <dl>
+      <dt>Breakdown</dt>
+      <dd>
+        <ul class="score-dimensions">
+          {% for d in local_breakdown %}
+            <li>{{ d.dimension }}: {{ '%.0f'|format(d.score) }}{% if d.weight is not none %} (weight {{ '%.2f'|format(d.weight) }}){% endif %}</li>
+          {% endfor %}
+        </ul>
+      </dd>
+    </dl>
+    {% endif %}
+    {% if latest_probe %}
+    <dl class="probe-live">
+      <dt>Probe status</dt>
+      <dd>
+        <span class="badge {% if latest_probe.responded %}verified{% else %}category{% endif %}">
+          {{ 'responded' if latest_probe.responded else 'no response' }}
+        </span>
+      </dd>
+      <dt>Latency</dt>
+      <dd>{% if latest_probe.latency_ms is not none %}{{ latest_probe.latency_ms }}ms{% else %}—{% endif %}</dd>
+      <dt>Presence</dt><dd>{{ latest_probe.presence or '—' }}</dd>
+      <dt>Status</dt><dd>{{ latest_probe.status or '—' }}</dd>
+      <dt>Skills</dt><dd>{{ latest_probe.skills_count or 0 }}</dd>
+      <dt>Last probed</dt>
+      <dd>{% if latest_probe.probed_at %}{{ latest_probe.probed_at.strftime('%Y-%m-%d %H:%M UTC') }}{% else %}—{% endif %}</dd>
+    </dl>
+    {% endif %}
+  </section>
+
   <!-- Termix enrichment: live data from the Termix Agent Card API -->
   {% if termix_card %}
   <section class="agent-profile termix-card">

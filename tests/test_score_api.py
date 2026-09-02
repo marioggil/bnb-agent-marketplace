@@ -15,7 +15,7 @@ Expected pillar math (pinned by test_agent_score.py):
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -232,7 +232,7 @@ async def test_compare_two_valid_ids_returns_agents_with_pillars(client, db):
     )
     _seed_probe(db, aid1)
     _seed_events(db, aid1, 5)
-    aid2 = await _seed_agent(db, 202, name="Beta", activity_score=Decimal("50"))
+    await _seed_agent(db, 202, name="Beta", activity_score=Decimal("50"))
     await db.commit()
 
     resp = client.get("/api/agents/compare", params={"ids": "56/201,56/202"})

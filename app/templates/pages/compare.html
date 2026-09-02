@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Compare agents &mdash; bnb_agent{% endblock %}
+{% block content %}
+<section class="compare-page">
+  <h1>Compare agents</h1>
+  <form hx-get="/agents/compare" hx-target="#compare-table" hx-swap="outerHTML"
+        class="compare-form" aria-label="Compare agents">
+    <label for="compare-ids">Agent ids (chain/token, comma-separated)</label>
+    <input type="text" id="compare-ids" name="ids" value="{{ ids or '' }}"
+           placeholder="56/1,56/2" aria-label="Agent ids" />
+    <button type="submit" class="btn btn-primary">Compare</button>
+  </form>
+  {% include "partials/compare_table.html" %}
+</section>
+{% endblock %}
