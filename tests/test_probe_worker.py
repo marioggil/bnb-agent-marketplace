@@ -410,3 +410,49 @@ async def test_probe_cycle_chunks_120_agents_to_50(db, respx_mock):
 
 
 # ---------------------------------------------------------------------------
+# P1 — lifespan task lifecycle (indexer pattern)
+# ---------------------------------------------------------------------------
+
+
+def test_lifespan_creates_and_cancels_probe_task(app, monkeypatch):
+    import threading
+
+    import app.services.probe_worker as probe_worker_mod
+
+    started = threading.Event()
+    cancelled = threading.Event()
+
+    async def _fake_loop() -> None:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    monkeypatch.setattr(probe_worker_mod, "run_probe_loop", _fake_loop)
+    monkeypatch.setenv("PROBE_ENABLED", "true")
+
+    with TestClient(app) as client:
+        assert client.get("/healthz").status_code == 200
+        assert started.wait(timeout=2), "probe task never started"
+        assert not cancelled.is_set()
+
+    assert cancelled.wait(timeout=2), "probe task was not cancelled on shutdown"
+
+
+def test_lifespan_probe_disabled_when_setting_off(app, monkeypatch):
+    import app.services.probe_worker as probe_worker_mod
+
+    called: list[str] = []
+
+    async def _must_not_run() -> None:  # pragma: no cover - must never run
+        called.append("called")
+
+    monkeypatch.setattr(probe_worker_mod, "run_probe_loop", _must_not_run)
+    monkeypatch.setenv("PROBE_ENABLED", "false")
+
+    with TestClient(app) as client:
+        assert client.get("/healthz").status_code == 200
+
+    assert called == []

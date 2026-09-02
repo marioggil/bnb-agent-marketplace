@@ -60,9 +60,22 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     else:
         print("[lifespan] On-chain indexer DISABLED (no ALCHEMY_API_KEY)", flush=True)
 
+    # Start the A2A probe worker (agent-score P1) — indexer pattern.
+    probe_task = None
+    print(f"[lifespan] PROBE_ENABLED: {'yes' if settings.probe_enabled else 'NO'}", flush=True)
+    if settings.probe_enabled:
+        from app.services.probe_worker import run_probe_loop
+
+        probe_task = asyncio.create_task(run_probe_loop())
+        print("[lifespan] A2A probe worker task started", flush=True)
+    else:
+        print("[lifespan] A2A probe worker DISABLED (PROBE_ENABLED=false)", flush=True)
+
     try:
         yield
     finally:
+        if probe_task:
+            probe_task.cancel()
         if indexer_task:
             indexer_task.cancel()
         await engine.dispose()
