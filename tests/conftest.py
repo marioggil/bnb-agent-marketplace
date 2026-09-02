@@ -32,6 +32,10 @@ os.environ.setdefault("8004SCAN_BASE", "https://8004scan.io/api/v1/public")
 # Disable on-chain indexer during tests — the real RPC key must not cause
 # background TCP connections in the test suite.
 os.environ.pop("ALCHEMY_API_KEY", None)
+# Disable the A2A probe worker during tests — the lifespan task would
+# otherwise run real probe cycles against the test DB in every TestClient
+# test. The P1 lifecycle tests flip PROBE_ENABLED back on explicitly.
+os.environ.setdefault("PROBE_ENABLED", "false")
 
 # x402 (FU-2) test defaults: testnet 97, RPC never reached (offline suite),
 # facilitator "configured" with a fixed test key so pay tests pass the
