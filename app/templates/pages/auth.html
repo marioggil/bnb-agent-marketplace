@@ -3,12 +3,17 @@
 {% block content %}
 <section class="auth">
   <h1>Sign in with your BSC wallet</h1>
-  <p>Use a wallet that supports <code>personal_sign</code> (MetaMask, Trust, Rabby).</p>
-  <ol>
-    <li>Request a nonce from <code>GET /auth/nonce?address=0x&hellip;</code></li>
-    <li>Sign the returned message with <code>personal_sign</code></li>
-    <li>POST the signature to <code>/auth/verify</code></li>
-  </ol>
+  <p>
+    Click the button and confirm the signature in your wallet. That is all
+    &mdash; no passwords, no accounts.
+  </p>
+  <button type="button" class="btn btn-primary" id="connect-wallet">Connect wallet</button>
+  <p id="auth-error" class="warning" hidden></p>
+  <p class="hint">
+    Works with any wallet that supports <code>personal_sign</code> (MetaMask,
+    Trust, Rabby). Need to add BSC Testnet? Use
+    <a href="https://chainlist.org" rel="noopener" target="_blank">chainlist.org</a>.
+  </p>
   <noscript><p class="warning">JavaScript is required to sign in.</p></noscript>
   <p><a href="/">Back to browse</a></p>
 </section>

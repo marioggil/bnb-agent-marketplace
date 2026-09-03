@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/static/css/site.css" />
     <!-- Vendored HTMX 2.x — no CDN inside the container (spec web-pages R1). -->
     <script src="/static/js/htmx-2.x.min.js" defer></script>
+    <script src="/static/js/auth.js" defer></script>
   </head>
   <body>
     <header>
@@ -18,7 +19,7 @@
         {% if _address %}
           <span class="user-address" title="Signed in wallet">{{ _address }}</span>
         {% else %}
-          <a href="/auth" hx-boost="true">Sign in</a>
+          <a href="/auth" class="btn btn-primary" id="connect-wallet">Connect wallet</a>
         {% endif %}
       </nav>
     </header>
