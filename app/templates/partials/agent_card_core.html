@@ -35,6 +35,9 @@
       {% if _hire_count %}<span>Hired by {{ _hire_count }}</span>{% endif %}
       {% if agent.owner_address and _owner %}
         <a class="creator" href="/?owner={{ agent.owner_address }}">by {{ _owner }}</a>
+        {% if flagged_addresses is defined and (agent.owner_address | lower) in flagged_addresses %}
+          <span class="badge risk" title="Owner wallet appears in the OFAC sanctioned-address lists">&#9888; flagged wallet</span>
+        {% endif %}
       {% endif %}
     </p>
     {% if agent.total_feedbacks > 0 %}

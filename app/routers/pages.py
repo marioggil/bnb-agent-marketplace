@@ -228,6 +228,23 @@ async def _hires_count(agent_ids: list[str]) -> dict[str, int]:
     return {agent_id: int(count) for agent_id, count in rows}
 
 
+async def _flagged_addresses_set() -> set[str]:
+    """Lowercase addresses in the OFAC mirror (T2 trust signal, DESIGN.md).
+
+    One query for the whole page; templates test membership to render the
+    `.badge.risk` marker next to creators/payment wallets. The set is
+    lowercase (the `flagged_addresses` PK contract) — templates compare
+    with `|lower` so mixed-case upstream addresses still match.
+    """
+    from sqlalchemy import select
+
+    from app.db.models.flagged_address import FlaggedAddress
+
+    async with AsyncSessionLocal() as session:
+        rows = (await session.scalars(select(FlaggedAddress.address))).all()
+    return set(rows)
+
+
 def _parse_compare_ids(ids: str) -> list[tuple[int, int]]:
     """Parse `chain/token,chain/token` into pairs, skipping malformed segments.
 
@@ -531,6 +548,7 @@ async def home(
     total_pages = (total + page_size - 1) // page_size if total else 0
     hire_price_usd = get_settings().x402_default_price_usd
     hires = await _hires_count([a.agent_id for a in items])
+    flagged_addresses = await _flagged_addresses_set()
     is_htmx = request.headers.get("HX-Request", "").lower() == "true"
     if is_htmx:
         # HTMX "load more" appends new cards without a wrapper (spec R4, S3).
@@ -552,6 +570,7 @@ async def home(
                 "has_more": page < total_pages,
                 "hires": hires,
                 "hire_price_usd": hire_price_usd,
+                "flagged_addresses": flagged_addresses,
             },
         )
     return _render(
@@ -574,6 +593,7 @@ async def home(
             "has_more": page < total_pages,
             "hires": hires,
             "hire_price_usd": hire_price_usd,
+            "flagged_addresses": flagged_addresses,
         },
     )
 
@@ -725,6 +745,7 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
     tx_explorer_base = (
         "https://testnet.bscscan.com" if settings.x402_chain_id == 97 else "https://bscscan.com"
     )
+    flagged_addresses = await _flagged_addresses_set()
 
     return _render(
         request,
@@ -746,6 +767,7 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             "local_score": local_score,
             "local_breakdown": local_breakdown,
             "latest_probe": latest_probe,
+            "flagged_addresses": flagged_addresses,
         },
     )
 
@@ -775,6 +797,32 @@ async def favorites(request: Request) -> HTMLResponse:
             await session.scalars(select(Favorite).where(Favorite.address == user.address))
         ).all()
     return _render(request, "pages/favorites.html", {"favorites": rows, "user": user})
+
+
+@router.get("/flagged", response_class=HTMLResponse)
+async def flagged_page(request: Request) -> HTMLResponse:
+    """Public OFAC flagged-wallet registry (T2 trust signal, DESIGN.md).
+
+    Lists every wallet mirrored from the 0xB10C sanctioned-address lists
+    with its source and first-seen date. Public by design — transparency is
+    the signal itself; there is nothing to authenticate.
+    """
+    from sqlalchemy import select
+
+    from app.db.models.flagged_address import FlaggedAddress
+    from app.services.flagged_sync import SOURCE_LABELS, SOURCE_REPO_URL
+
+    async with AsyncSessionLocal() as session:
+        rows = (
+            await session.scalars(
+                select(FlaggedAddress).order_by(FlaggedAddress.source, FlaggedAddress.address)
+            )
+        ).all()
+    return _render(
+        request,
+        "pages/flagged.html",
+        {"flagged": rows, "source_labels": SOURCE_LABELS, "source_url": SOURCE_REPO_URL},
+    )
 
 
 @router.get("/auth", response_class=HTMLResponse)

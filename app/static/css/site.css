@@ -876,6 +876,52 @@ header nav .user-address { color: var(--color-text); cursor: default; }
 .fav-card .fav-name { font-weight: var(--weight-semibold); }
 
 /* ---------------------------------------------------------------------------
+ * Flagged wallets (T2 — OFAC trust signal, public /flagged page)
+ * ------------------------------------------------------------------------ */
+
+.flagged-page h1 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+}
+
+.flagged-intro {
+  max-width: 640px;
+  color: var(--color-text-secondary);
+}
+
+.flagged-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  overflow: hidden;
+}
+
+.flagged-table th,
+.flagged-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.flagged-table th {
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-semibold);
+}
+
+.flagged-table tr:last-child td { border-bottom: none; }
+
+.flagged-table code {
+  word-break: break-all;
+  font-size: var(--text-xs);
+}
+
+/* ---------------------------------------------------------------------------
  * Auth
  * ------------------------------------------------------------------------ */
 

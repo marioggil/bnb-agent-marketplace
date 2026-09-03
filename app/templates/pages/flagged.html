@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Flagged wallets &mdash; bnb_agent{% endblock %}
+{% block content %}
+<section class="flagged-page">
+  <h1>Flagged wallets</h1>
+  <p class="flagged-intro">
+    Wallets listed here appear in the OFAC sanctioned digital-currency
+    address lists (<a href="{{ source_url }}" target="_blank" rel="noopener">0xB10C/ofac-sanctioned-digital-currency-addresses</a>,
+    MIT, updated nightly) and are mirrored locally by the flagged-address
+    sync. Treat payments to or from them as high risk.
+  </p>
+  {% if flagged %}
+  <table class="flagged-table">
+    <thead>
+      <tr><th>Address</th><th>Source</th><th>First seen</th></tr>
+    </thead>
+    <tbody>
+      {% for row in flagged %}
+      <tr>
+        <td><code>{{ row.address }}</code></td>
+        <td><span class="badge category">{{ source_labels.get(row.source, row.source) }}</span></td>
+        <td>{{ row.created_at.strftime('%Y-%m-%d') if row.created_at else '&mdash;' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <p>No flagged wallets.</p>
+    <p class="hint">The list is empty &mdash; run <code>POST /api/sync/flagged</code> to mirror the OFAC sanctioned-address lists.</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

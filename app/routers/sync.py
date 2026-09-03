@@ -4,8 +4,12 @@ POST /api/sync        — start an incremental or full sync run in the
                         background (202) or 409 if one is already running.
 GET  /api/sync/status — checkpoint + running state from the singleton
                         `sync_state` row.
+POST /api/sync/flagged — mirror the OFAC sanctioned-address lists into
+                        `flagged_addresses` (T2, DESIGN.md); runs inline
+                        and returns the per-source report, 409 while one
+                        is in progress.
 
-Both endpoints require the `X-API-Key` header to match `SYNC_API_KEY`
+All endpoints require the `X-API-Key` header to match `SYNC_API_KEY`
 (compared with `hmac.compare_digest`). With `SYNC_API_KEY` unset the
 endpoints answer 503 — the API is opt-in, so a missing key fails loudly
 instead of being silently open.
@@ -23,7 +27,7 @@ import asyncio
 import hmac
 import logging
 import threading
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -33,6 +37,7 @@ from app.config import get_settings
 from app.db.models.sync_state import SyncState
 from app.db.session import get_db
 from app.errors import Conflict
+from app.services.flagged_sync import refresh_flagged_addresses
 from app.services.sync_worker import SyncReport, sync_full, sync_incremental
 
 logger = logging.getLogger(__name__)
@@ -120,3 +125,27 @@ async def sync_status(db: AsyncSession = Depends(get_db)) -> dict[str, object]:
         "last_sync_at": state.last_sync_at.isoformat() if state.last_sync_at else None,
         "failed_count": len(state.failed_token_ids or []),
     }
+
+
+#: Guards concurrent `/api/sync/flagged` runs. Mirrors `_sync_lock` but as
+#: its own lock so flagged syncs and agent syncs never block each other.
+_flag_sync_lock = threading.Lock()
+
+
+@router.post("/flagged", dependencies=[Depends(require_sync_key)])
+async def sync_flagged() -> dict[str, Any]:
+    """Mirror the OFAC sanctioned-address lists into `flagged_addresses`.
+
+    Fetches each list in `FLAGGED_SOURCES` (public GitHub raw, no auth),
+    normalizes the addresses to lowercase and REPLACES that source's rows —
+    idempotent, and addresses removed upstream disappear here too. Runs
+    inline and returns the per-source report; a concurrent trigger gets 409
+    while one is in progress (same guard shape as POST /api/sync).
+    """
+    if not _flag_sync_lock.acquire(blocking=False):
+        raise Conflict("a flagged-address sync is already in progress")
+    try:
+        report = await refresh_flagged_addresses()
+    finally:
+        _flag_sync_lock.release()
+    return report.to_dict()
