@@ -149,3 +149,74 @@ async def sync_flagged() -> dict[str, Any]:
     finally:
         _flag_sync_lock.release()
     return report.to_dict()
+
+
+@router.post("/agent/{chain_id}/{token_id}", dependencies=[Depends(require_sync_key)])
+async def sync_one_agent(
+    chain_id: int,
+    token_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Fetch + upsert a single agent from the upstream (BSC only).
+
+    Lets an operator add a specific agent that the incremental sync has not
+    reached yet (coverage is a small fraction of the BSC registry). Runs
+    inline and mirrors the per-agent path of the two-phase sync: get_agent
+    -> row map -> ON CONFLICT upsert -> category enrichment. 404 when the
+    upstream has no such agent; 422 when the agent is not on BSC.
+    """
+    from app.db.models.agent import BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, AgentCache, build_agent_id
+    from app.services.client_8004scan import (
+        Client8004Scan,
+        UpstreamError,
+        UpstreamRateLimit,
+        UpstreamUnavailable,
+    )
+    from app.services.sync_worker import _maybe_enrich_category, _row_from_agent, _upsert_agent
+
+    if chain_id != BSC_CHAIN_ID:
+        raise HTTPException(
+            status_code=422,
+            detail=f"only BSC chain {BSC_CHAIN_ID} is supported",
+        )
+    try:
+        async with Client8004Scan() as client:
+            agent = await client.get_agent(chain_id, token_id)
+    except UpstreamRateLimit as exc:
+        raise HTTPException(status_code=429, detail=f"upstream rate limited: {exc}") from exc
+    except (UpstreamUnavailable, UpstreamError) as exc:
+        raise HTTPException(status_code=502, detail=f"upstream error: {exc}") from exc
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"agent {chain_id}:{token_id} not found upstream")
+    if agent.chain_id is not None and int(agent.chain_id) != BSC_CHAIN_ID:
+        raise HTTPException(
+            status_code=422,
+            detail=f"agent {token_id} is on chain {agent.chain_id}, not BSC",
+        )
+
+    # Force a consistent agent_id even if the upstream supplies one.
+    if not agent.agent_id or not str(agent.agent_id).startswith(f"{BSC_CHAIN_ID}:"):
+        agent.agent_id = build_agent_id(BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, token_id)
+    elif ":" not in str(agent.agent_id):
+        agent.agent_id = f"{BSC_CHAIN_ID}:{BSC_IDENTITY_REGISTRY}:{agent.agent_id}"
+
+    row = _row_from_agent(agent, category_override="")
+    await _upsert_agent(db, row)
+    await _maybe_enrich_category(db, agent, row["agent_id"])
+    await db.commit()
+
+    from sqlalchemy import select
+
+    # AgentCache's PK is `id`, not `agent_id` — select by the canonical id.
+    cached = await db.scalar(
+        select(AgentCache).where(AgentCache.agent_id == row["agent_id"])
+    )
+    return {
+        "agent_id": row["agent_id"],
+        "name": row["name"],
+        "token_id": row["token_id"],
+        "chain_id": row["chain_id"],
+        "x402_supported": row["x402_supported"],
+        "category": cached.category if cached is not None else None,
+        "wallet": row["agent_wallet"],
+    }
