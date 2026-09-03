@@ -464,13 +464,25 @@
        payment wallet (payTo); the status UI is driven by payment.js. -->
   <section class="hire-panel">
     <h2>Hire this agent</h2>
+    {% if my_paid_count %}
+    <div class="hired-panel">
+      <h3>Hired by you</h3>
+      <p class="hired-last">
+        {% if my_paid_count == 1 %}You hired this agent once.{% else %}You hired this agent {{ my_paid_count }} times.{% endif %}
+        {% if my_last_hire and my_last_hire.status.value == 'paid' %}
+        Last hire: {{ my_last_hire.created_at.strftime('%Y-%m-%d') }} for ${{ '%.2f'|format(my_last_hire.amount or hire_price_usd) }}
+        {% if my_last_hire.tx_hash %}&mdash; <a href="{{ tx_explorer_base }}/tx/{{ my_last_hire.tx_hash }}" target="_blank" rel="noopener">view transaction</a>{% endif %}
+        {% endif %}
+      </p>
+    </div>
+    {% endif %}
     <p class="hire-price">Hire for ${{ '%.2f'|format(hire_price_usd) }}</p>
     {% if pay_to %}
     <button id="hire-cta" type="button" class="btn btn-primary"
             data-agent-id="{{ agent.agent_id }}"
             data-agent-url="{{ agent.agent_url or '' }}"
             data-csrf="{{ csrf_token() if csrf_token is defined else '' }}">
-      Hire for ${{ '%.2f'|format(hire_price_usd) }}
+      Hire {% if my_paid_count %}again {% endif %}for ${{ '%.2f'|format(hire_price_usd) }}
     </button>
     {% else %}
     <button id="hire-cta" type="button" class="btn btn-primary" disabled

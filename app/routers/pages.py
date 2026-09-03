@@ -699,14 +699,45 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
     except Exception:
         logger.warning("Failed to fetch onchain stats for %s", row.agent_id, exc_info=True)
 
+    # The signed-in user's own hire history for this agent (re-hire UX).
+    # Anonymous callers get empty lists; `my_paid_count` drives the
+    # "Hire again" CTA + "Hired by you" panel in agent_detail.html.
+    my_hires: list[Any] = []
+    session_address = _read_session(request.cookies.get(SESSION_COOKIE_NAME))
+    if session_address is not None:
+        from app.db.models.hired_agent import HiredAgent
+
+        async with AsyncSessionLocal() as session:
+            my_hires = list(
+                (
+                    await session.scalars(
+                        select(HiredAgent)
+                        .where(
+                            HiredAgent.address == session_address,
+                            HiredAgent.agent_id == row.agent_id,
+                        )
+                        .order_by(HiredAgent.created_at.desc())
+                    )
+                ).all()
+            )
+    my_paid_count = sum(1 for h in my_hires if h.status == "paid")
+    settings = get_settings()
+    tx_explorer_base = (
+        "https://testnet.bscscan.com" if settings.x402_chain_id == 97 else "https://bscscan.com"
+    )
+
     return _render(
         request,
         "pages/agent_detail.html",
         {
             "agent": row,
             "pay_to": row.agent_wallet,
-            "hire_price_usd": get_settings().x402_default_price_usd,
+            "hire_price_usd": settings.x402_default_price_usd,
             "hires": hires,
+            "my_hires": my_hires,
+            "my_last_hire": my_hires[0] if my_hires else None,
+            "my_paid_count": my_paid_count,
+            "tx_explorer_base": tx_explorer_base,
             "profile": profile,
             "termix_card": termix_card,
             "evoevo_card": evoevo_card,

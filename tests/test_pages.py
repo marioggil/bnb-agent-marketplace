@@ -97,6 +97,54 @@ async def test_agent_detail_renders_hire_panel(client, db):
     assert 'id="hire-status"' in body
 
 
+# Hired-by-you panel: a signed-in user with a paid hire sees the history and
+# the "Hire again" CTA; anonymous users see neither.
+async def test_agent_detail_shows_hired_panel_and_hire_again(client, db):
+    from decimal import Decimal
+
+    from app.db.models.hired_agent import HiredAgent, HiredStatus
+    from tests.conftest import _sign_in
+
+    aid = await _seed_one(db, 1, name="Alpha")
+    agent = await db.scalar(select(AgentCache).where(AgentCache.agent_id == aid))
+    assert agent is not None
+    agent.agent_wallet = "0x" + "77" * 20
+    await db.commit()
+
+    address, cookie = _sign_in(client)
+    # Create the hire through the real API (the app's connection owns the
+    # user row), then flip it to PAID in this session to render the panel.
+    from app.services.auth import issue_csrf
+
+    create = client.post(
+        "/api/hires",
+        json={"agent_id": aid},
+        cookies={"bnb_agent_session": cookie},
+        headers={"X-CSRF-Token": issue_csrf(cookie)},
+    )
+    assert create.status_code == 201, create.text
+    row = await db.get(HiredAgent, create.json()["id"])
+    assert row is not None
+    row.status = HiredStatus.PAID
+    row.tx_hash = "0x" + "ab" * 32
+    row.amount = Decimal("1.000000000000000000")
+    await db.commit()
+
+    client.cookies.set("bnb_agent_session", cookie)
+    body = client.get("/agents/56/1").text
+    assert "Hired by you" in body
+    assert "You hired this agent once" in body
+    assert "Hire again for $1.00" in body
+    assert "view transaction" in body
+
+
+async def test_agent_detail_no_hired_panel_for_anonymous(client, db):
+    await _seed_one(db, 1, name="Alpha")
+    body = client.get("/agents/56/1").text
+    assert "Hired by you" not in body
+    assert "Hire again" not in body
+
+
 # R2 — HTMX swap returns partial only.
 async def test_home_htmx_returns_partial(client, db):
     await _seed_one(db, 1, name="Alpha")

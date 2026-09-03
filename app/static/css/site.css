@@ -687,6 +687,28 @@ header nav .user-address { color: var(--color-text); cursor: default; }
   font-weight: var(--weight-bold);
 }
 
+/* "Hired by you" re-hire history (agent detail) */
+.hired-panel {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.hired-panel h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+.hired-last {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.hired-last a { color: var(--color-accent); }
+
 .hint {
   margin: var(--space-3) 0 0;
   font-size: var(--text-sm);
