@@ -143,7 +143,10 @@ def _patch_metadata_for_sqlite() -> None:
     cat_col = AgentCache.__table__.c.get("category")
     if cat_col is not None:
         cat_col.computed = None  # type: ignore[attr-defined]
-        cat_col.server_default = DefaultClause("'other'")
+        # DefaultClause quotes plain strings itself, so `"other"` (no SQL
+        # quotes) is the correct literal — passing "'other'" stored the
+        # quotes as part of the value.
+        cat_col.server_default = DefaultClause("other")
     for tbl in Base.metadata.tables.values():
         for col in list(tbl.columns):
             if type(col.type).__name__ == "JSONB":
