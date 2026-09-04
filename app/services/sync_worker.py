@@ -484,6 +484,24 @@ async def _enrich_and_upsert(
         row = _row_from_agent(agent, category_override="")
         await _upsert_agent(session, row)
         await _maybe_enrich_category(session, agent, row["agent_id"])
+        if int(agent.total_feedbacks or 0) > 0:
+            # Agent feedbacks (agent-feedbacks): mirror the individual
+            # reviews only when the upstream reports any. Best-effort by
+            # design — a feedback sync failure must never fail the agent
+            # sync, so the try/except swallows and logs. Imported inside
+            # the function to avoid a circular import (feedback_sync is
+            # standalone but keeps the lazy pattern of client_termix).
+            try:
+                from app.services.feedback_sync import sync_agent_feedbacks
+
+                await sync_agent_feedbacks(session, row["agent_id"], BSC_CHAIN_ID, token_id)
+            except Exception:
+                logger.warning(
+                    "feedback sync failed for agent_id=%s token_id=%s; keeping the agent row",
+                    row["agent_id"],
+                    token_id,
+                    exc_info=True,
+                )
         upserted += 1
         last_token_id = max(last_token_id, token_id)
 

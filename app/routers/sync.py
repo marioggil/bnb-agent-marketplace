@@ -203,6 +203,20 @@ async def sync_one_agent(
     row = _row_from_agent(agent, category_override="")
     await _upsert_agent(db, row)
     await _maybe_enrich_category(db, agent, row["agent_id"])
+    # Feedback mirror for the single-agent path (same post-pass as the batch
+    # worker). A feedback-sync failure must never fail the agent sync.
+    if int(agent.total_feedbacks or 0) > 0:
+        try:
+            from app.services.feedback_sync import sync_agent_feedbacks
+
+            await sync_agent_feedbacks(db, row["agent_id"], BSC_CHAIN_ID, token_id)
+        except Exception:
+            logger.warning(
+                "feedback sync failed for agent_id=%s token_id=%s; keeping the agent row",
+                row["agent_id"],
+                token_id,
+                exc_info=True,
+            )
     await db.commit()
 
     from sqlalchemy import select

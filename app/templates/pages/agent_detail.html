@@ -508,6 +508,20 @@
       <span class="status-failed">Payment failed: <span id="hire-error"></span></span>
     </div>
   </section>
+
+  <!-- Agent feedbacks (agent-feedbacks): individual reviews mirrored from
+       the 8004scan /feedbacks endpoint. Hidden by default behind a native
+       <details> toggle (no JS); the button loads the first page into
+       #reviews-body via HTMX, "Load more" appends the rest. -->
+  <details class="reviews-panel">
+    <summary>Reviews ({{ feedback_total }})</summary>
+    <button type="button" class="btn"
+            hx-get="/agents/{{ agent.chain_id }}/{{ agent.token_id }}/feedbacks?offset=0"
+            hx-target="#reviews-body" hx-swap="innerHTML">
+      Show reviews
+    </button>
+    <div id="reviews-body"></div>
+  </details>
 </article>
 <!-- Vendored ethers v6 UMD + the x402 signer (no CDN inside the container). -->
 <script src="/static/js/ethers-6.14.min.js" defer></script>

@@ -763,6 +763,67 @@ header nav .user-address { color: var(--color-text); cursor: default; }
 #hire-status.is-failed .status-failed { display: inline; color: var(--color-danger); }
 
 /* ---------------------------------------------------------------------------
+ * Agent feedbacks (agent-feedbacks — collapsible reviews panel)
+ * ------------------------------------------------------------------------ */
+
+.reviews-panel {
+  margin-top: var(--space-8);
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.reviews-panel summary {
+  cursor: pointer;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.reviews-panel summary:hover { color: var(--color-accent-alt); }
+
+.reviews-panel .btn { margin-top: var(--space-4); }
+
+.reviews-list {
+  list-style: none;
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.review-item {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.review-item.revoked { opacity: 0.55; }
+
+.review-comment {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.review-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.review-user { color: var(--color-text-secondary); }
+
+.review-tx { color: var(--color-accent); }
+
+/* ---------------------------------------------------------------------------
  * Feedback states
  * ------------------------------------------------------------------------ */
 

@@ -811,8 +811,75 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             "local_breakdown": local_breakdown,
             "latest_probe": latest_probe,
             "flagged_addresses": flagged_addresses,
+            "feedback_total": feedback_total,
         },
     )
+
+
+@router.get("/agents/{chain_id}/{token_id}/feedbacks")
+async def agent_feedbacks(
+    request: Request,
+    chain_id: int,
+    token_id: int,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=5, ge=1, le=20),
+) -> Response:
+    """Paginated individual reviews for one agent (agent-feedbacks).
+
+    Public, no auth. Serves the locally mirrored `agent_feedbacks` rows
+    (synced from the 8004scan /feedbacks endpoint), newest first. HTMX
+    callers (HX-Request: true) get the `reviews_list.html` fragment swapped
+    into `#reviews-body`; plain callers get the JSON shape with the same
+    items plus the total count for the summary label.
+    """
+    from sqlalchemy import func, select
+
+    from app.db.models.agent_feedback import AgentFeedback
+    from app.schemas.feedback import FeedbackOut
+
+    async with AsyncSessionLocal() as session:
+        total = int(
+            await session.scalar(
+                select(func.count())
+                .select_from(AgentFeedback)
+                .where(AgentFeedback.chain_id == chain_id, AgentFeedback.token_id == token_id)
+            )
+            or 0
+        )
+        rows = (
+            await session.scalars(
+                select(AgentFeedback)
+                .where(AgentFeedback.chain_id == chain_id, AgentFeedback.token_id == token_id)
+                .order_by(
+                    AgentFeedback.submitted_at.desc().nullslast(),
+                    AgentFeedback.created_at.desc(),
+                )
+                .offset(offset)
+                .limit(limit + 1)  # one extra row to compute has_more
+            )
+        ).all()
+    items = list(rows[:limit])
+    has_more = len(rows) > limit
+
+    if request.headers.get("HX-Request", "").lower() == "true":
+        return _render(
+            request,
+            "partials/reviews_list.html",
+            {
+                "items": items,
+                "has_more": has_more,
+                "next_offset": offset + limit,
+                "chain_id": chain_id,
+                "token_id": token_id,
+                "tx_explorer_base": _tx_explorer_base(),
+            },
+        )
+    return {
+        "items": [FeedbackOut.model_validate(r) for r in items],
+        "total": total,
+        "offset": offset,
+        "has_more": has_more,
+    }
 
 
 @router.get("/favorites", response_class=HTMLResponse)

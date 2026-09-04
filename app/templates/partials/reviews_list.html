@@ -1,0 +1,32 @@
+{# Agent feedbacks fragment (agent-feedbacks): served by
+   GET /agents/{chain_id}/{token_id}/feedbacks as an HTMX partial
+   (HX-Request: true) and swapped into #reviews-body. The "Load more"
+   button appends the next page via hx-swap="beforeend". Expects `items`
+   (list of AgentFeedback rows) plus `has_more`, `next_offset`, `chain_id`,
+   `token_id` and `tx_explorer_base` in context. #}
+{% if items %}
+<ul class="reviews-list">
+  {% for item in items %}
+  <li class="review-item{% if item.is_revoked %} revoked{% endif %}">
+    <p class="review-comment">{{ item.comment or '—' }}</p>
+    <p class="review-meta">
+      {% if item.score is not none %}<span class="badge category">score {{ item.score }}</span>{% endif %}
+      {% if item.tag1 %}<span class="badge category">{{ item.tag1 }}</span>{% endif %}
+      {% if item.tag2 %}<span class="badge category">{{ item.tag2 }}</span>{% endif %}
+      {% if item.is_revoked %}<span class="badge risk">revoked</span>{% endif %}
+      <span class="review-user">{% if item.user_address %}{{ item.user_address[:6] ~ '…' ~ item.user_address[-4:] }}{% else %}anonymous{% endif %}</span>
+      {% if item.submitted_at %}<span class="review-date">{{ item.submitted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
+      {% if item.tx_hash %}
+        <a class="review-tx" href="{{ tx_explorer_base }}/tx/{{ item.tx_hash }}" target="_blank" rel="noopener">view tx</a>
+      {% endif %}
+    </p>
+  </li>
+  {% endfor %}
+</ul>
+{% if has_more %}
+<button class="btn" hx-get="/agents/{{ chain_id }}/{{ token_id }}/feedbacks?offset={{ next_offset }}"
+        hx-target="#reviews-body" hx-swap="beforeend">Load more</button>
+{% endif %}
+{% else %}
+<p class="empty-state">No reviews yet.</p>
+{% endif %}
