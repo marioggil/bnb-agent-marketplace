@@ -534,7 +534,9 @@ class OnchainBroadcaster:
             "from": account.address,
             "to": decoded.token,
             "data": calldata,
-            "value": 0,
+            # Hex string, not int: strict nodes (BSC official seeds) reject
+            # a numeric value in estimateGas with a JSON unmarshal error.
+            "value": "0x0",
         }
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             try:
