@@ -1,6 +1,7 @@
 """SQLAlchemy ORM models. Imported for Alembic metadata discovery."""
 
 from app.db.models.agent import BSC_CHAIN_ID, BSC_IDENTITY_REGISTRY, AgentCache
+from app.db.models.agent_feedback import AgentFeedback
 from app.db.models.agent_probe import AgentProbe
 from app.db.models.auth_nonce import NONCE_TTL_SECONDS, AuthNonce
 from app.db.models.favorite import Favorite
@@ -17,6 +18,7 @@ from app.db.models.user import User
 
 __all__ = [
     "AgentCache",
+    "AgentFeedback",
     "AgentProbe",
     "AuthNonce",
     "BSC_CHAIN_ID",
