@@ -1028,3 +1028,44 @@ header nav .user-address { color: var(--color-text); cursor: default; }
   html { scroll-behavior: auto; }
   .loading { animation: none; }
 }
+/* Upstream score breakdown (agent detail — dimension bars) */
+.dim-bars li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.dim-label {
+  min-width: 10rem;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.dim-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.dim-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 999px;
+}
+
+.dim-score {
+  min-width: 2.5rem;
+  text-align: right;
+  font-weight: var(--weight-semibold);
+}
+
+.dim-weight {
+  min-width: 4.5rem;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}

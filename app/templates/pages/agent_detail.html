@@ -171,6 +171,47 @@
     {% endif %}
   </section>
 
+  <!-- Upstream score breakdown (8004scan `scores` payload): the six
+       dimensions + weighted sub-scores mirrored by the sync. -->
+  {% if agent.scores %}
+  <section class="agent-profile score-breakdown-card" id="score-breakdown">
+    <h2>Score breakdown</h2>
+    {% if agent.scores.breakdown and agent.scores.breakdown.dimensions %}
+    <dl>
+      <dt>Dimensions</dt>
+      <dd>
+        <ul class="score-dimensions dim-bars">
+          {% for dim_name, dim in agent.scores.breakdown.dimensions.items() %}
+          <li>
+            <span class="dim-label">{{ dim_name|replace('_', ' ')|title }}</span>
+            <span class="dim-bar"><span class="dim-fill" style="width: {{ [dim.score|int, 100]|min }}%"></span></span>
+            <span class="dim-score">{{ '%.0f'|format(dim.score) }}</span>
+            <span class="dim-weight">w={{ '%.2f'|format(dim.weight) }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </dd>
+    </dl>
+    {% endif %}
+    <dl>
+      {% for m in ['quality', 'popularity', 'activity', 'wallet', 'freshness', 'metadata_completeness'] %}
+        {% if agent.scores[m] is not none %}
+        <dt>{{ m|replace('_', ' ')|title }}</dt><dd>{{ '%.2f'|format(agent.scores[m]) }}</dd>
+        {% endif %}
+      {% endfor %}
+      {% if agent.scores.health_score is not none %}
+      <dt>Health</dt><dd>{{ '%.2f'|format(agent.scores.health_score) }}</dd>
+      {% endif %}
+      {% if agent.scores.last_scored_at %}
+      <dt>Last scored</dt><dd>{{ agent.scores.last_scored_at[:10] }}</dd>
+      {% endif %}
+    </dl>
+    {% if agent.scores.breakdown and agent.scores.breakdown.algorithm %}
+    <p class="hint">Algorithm {{ agent.scores.breakdown.algorithm }} (v{{ agent.scores.breakdown.version }})</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <!-- Termix enrichment: live data from the Termix Agent Card API -->
   {% if termix_card %}
   <section class="agent-profile termix-card">
