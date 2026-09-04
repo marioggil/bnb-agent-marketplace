@@ -27,7 +27,15 @@
         <span class="badge risk" title="Owner wallet appears in the OFAC sanctioned-address lists">&#9888; flagged wallet</span>
       {% endif %}
     </dd>
-    <dt>Score</dt><dd>{{ agent.average_score or 'n/a' }} ({{ agent.total_feedbacks }} feedbacks)</dd>
+    <dt>Score</dt>
+    <dd>
+      {% if feedback_avg is defined and feedback_avg.get(agent.agent_id) is not none %}
+        {{ '%.0f'|format(feedback_avg.get(agent.agent_id)) }}/100
+        ({{ agent.total_feedbacks }} feedbacks)
+      {% else %}
+        {{ agent.average_score or 'n/a' }} ({{ agent.total_feedbacks }} feedbacks)
+      {% endif %}
+    </dd>
     {% if agent.total_feedbacks > 0 %}
       <dt>Rating</dt><dd>&#9733; {{ agent.star_count }} &middot; {{ agent.total_feedbacks }} ratings</dd>
     {% endif %}
