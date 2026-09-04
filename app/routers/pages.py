@@ -229,6 +229,34 @@ async def _hires_count(agent_ids: list[str]) -> dict[str, int]:
     return {agent_id: int(count) for agent_id, count in rows}
 
 
+async def _feedback_avg_scores(agent_ids: list[str]) -> dict[str, float]:
+    """Average feedback score per agent from the locally mirrored reviews.
+
+    The upstream `average_score` snapshot is often 0/unset even when real
+    feedbacks exist; the mirrored `agent_feedbacks` rows carry the actual
+    scores, so the marketplace computes its own average (revoked reviews
+    excluded). One query for the whole page.
+    """
+    if not agent_ids:
+        return {}
+    from sqlalchemy import func, select
+
+    from app.db.models.agent_feedback import AgentFeedback
+
+    q = (
+        select(AgentFeedback.agent_id, func.avg(AgentFeedback.score))
+        .where(
+            AgentFeedback.agent_id.in_(agent_ids),
+            AgentFeedback.is_revoked.is_(False),
+            AgentFeedback.score.is_not(None),
+        )
+        .group_by(AgentFeedback.agent_id)
+    )
+    async with AsyncSessionLocal() as session:
+        rows = (await session.execute(q)).all()
+    return {agent_id: float(avg) for agent_id, avg in rows if avg is not None}
+
+
 async def _flagged_addresses_set() -> set[str]:
     """Lowercase addresses in the OFAC mirror (T2 trust signal, DESIGN.md).
 
@@ -599,6 +627,7 @@ async def home(
     total_pages = (total + page_size - 1) // page_size if total else 0
     hire_price_usd, _ = _hire_pricing(get_settings())
     hires = await _hires_count([a.agent_id for a in items])
+    feedback_avg = await _feedback_avg_scores([a.agent_id for a in items])
     flagged_addresses = await _flagged_addresses_set()
     is_htmx = request.headers.get("HX-Request", "").lower() == "true"
     if is_htmx:
@@ -620,6 +649,7 @@ async def home(
                 "platform": platform,
                 "has_more": page < total_pages,
                 "hires": hires,
+                "feedback_avg": feedback_avg,
                 "hire_price_usd": hire_price_usd,
                 "flagged_addresses": flagged_addresses,
             },
@@ -643,6 +673,7 @@ async def home(
             "platform": platform,
             "has_more": page < total_pages,
             "hires": hires,
+            "feedback_avg": feedback_avg,
             "hire_price_usd": hire_price_usd,
             "flagged_addresses": flagged_addresses,
         },
@@ -709,6 +740,7 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
         mcp_info = await fetch_mcp_info(mcp_endpoint)
 
     hires = await _hires_count([row.agent_id])
+    feedback_avg = await _feedback_avg_scores([row.agent_id])
 
     # Local activity score (agent-score U2): the locally-computed composite,
     # its per-dimension breakdown, and the latest A2A probe snapshot.
@@ -841,6 +873,7 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             "latest_probe": latest_probe,
             "flagged_addresses": flagged_addresses,
             "feedback_total": feedback_total,
+            "feedback_avg": feedback_avg,
             "chain_slugs": _CHAIN_SLUGS,
         },
     )

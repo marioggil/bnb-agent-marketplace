@@ -572,7 +572,7 @@
        <details> toggle (no JS); the button loads the first page into
        #reviews-body via HTMX, "Load more" appends the rest. -->
   <details class="reviews-panel">
-    <summary>Reviews ({{ feedback_total }})</summary>
+    <summary>Reviews ({{ feedback_total }}){% if feedback_avg is defined and feedback_avg.get(agent.agent_id) is not none %} &mdash; avg score {{ '%.0f'|format(feedback_avg.get(agent.agent_id)) }}{% endif %}</summary>
     <button type="button" class="btn"
             hx-get="/agents/{{ agent.chain_id }}/{{ agent.token_id }}/feedbacks?offset=0"
             hx-target="#reviews-body" hx-swap="innerHTML">

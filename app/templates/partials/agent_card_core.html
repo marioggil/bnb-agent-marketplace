@@ -28,7 +28,14 @@
       {% if agent.agent_wallet %}
         <span class="price">${{ '%.2f' | format(hire_price_usd | default(1.00)) }}</span>
       {% endif %}
-      <span class="score">{{ agent.average_score or 'n/a' }} <span class="score-label">score</span></span>
+      <span class="score">
+        {% if feedback_avg is defined and agent.agent_id in feedback_avg %}
+          {{ '%.0f'|format(feedback_avg[agent.agent_id]) }}
+        {% else %}
+          {{ agent.average_score or 'n/a' }}
+        {% endif %}
+        <span class="score-label">score</span>
+      </span>
       {% if agent.activity_score is not none %}
         <span class="score activity-score" title="Local activity score (A2A probes + on-chain track record)">{{ agent.activity_score }} <span class="score-label">activity</span></span>
       {% endif %}

@@ -145,6 +145,39 @@ async def test_agent_detail_no_hired_panel_for_anonymous(client, db):
     assert "Hire again" not in body
 
 
+# Card + detail show the locally-computed average of mirrored feedbacks.
+async def test_agent_score_uses_feedback_average(client, db):
+    from app.db.models.agent_feedback import AgentFeedback
+
+    aid = await _seed_one(db, 1, name="Alpha")
+    now = _now()
+    db.add_all(
+        [
+            AgentFeedback(
+                feedback_id=f"56:1:0x{'a' * 40}:{i}",
+                agent_id=aid,
+                chain_id=BSC_CHAIN_ID,
+                token_id=1,
+                user_address="0x" + "a" * 40,
+                score=100 if i == 1 else 60,
+                comment=f"fb {i}",
+                submitted_at=now,
+                is_revoked=False,
+                created_at=now,
+                updated_at=now,
+            )
+            for i in (1, 2)
+        ]
+    )
+    await db.commit()
+
+    card = client.get("/").text
+    assert "80" in card  # avg(100, 60) shown on the card score
+
+    detail = client.get("/agents/56/1").text
+    assert "Reviews (2) &mdash; avg score 80" in detail
+
+
 # Rank, cross-chain presence and endpoint verification render from cached data.
 async def test_agent_detail_rank_crosschain_endpoint(client, db):
     from app.db.models.agent import AgentCache
