@@ -267,6 +267,35 @@ def _tx_explorer_base() -> str:
     return "https://testnet.bscscan.com" if settings.x402_chain_id == 97 else "https://bscscan.com"
 
 
+#: 8004scan site slugs for cross-chain links (chain_id -> /agents/<slug>/<token>).
+_CHAIN_SLUGS: dict[int, str] = {
+    1: "ethereum",
+    10: "optimism",
+    56: "bsc",
+    100: "gnosis",
+    101: "solana",
+    137: "polygon",
+    196: "xlayer",
+    360: "shape",
+    1088: "metis",
+    1868: "soneium",
+    2345: "goat",
+    2741: "abstract",
+    4217: "tempo",
+    4326: "megaeth",
+    4663: "robinhood",
+    5000: "mantle",
+    42161: "arbitrum",
+    42220: "celo",
+    43114: "avalanche",
+    45056: "billions",
+    534352: "scroll",
+    59144: "linea",
+    167000: "taiko",
+    1187947933: "skale",
+}
+
+
 def _parse_compare_ids(ids: str) -> list[tuple[int, int]]:
     """Parse `chain/token,chain/token` into pairs, skipping malformed segments.
 
@@ -812,6 +841,7 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             "latest_probe": latest_probe,
             "flagged_addresses": flagged_addresses,
             "feedback_total": feedback_total,
+            "chain_slugs": _CHAIN_SLUGS,
         },
     )
 

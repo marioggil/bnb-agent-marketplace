@@ -1069,3 +1069,16 @@ header nav .user-address { color: var(--color-text); cursor: default; }
   font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
+
+/* Cross-chain presence list (agent detail) */
+.cross-chain-panel summary { cursor: pointer; font-size: var(--text-base); font-weight: var(--weight-semibold); color: var(--color-text); }
+.cross-chain-panel summary:hover { color: var(--color-accent-alt); }
+.cross-chain-list {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.cross-chain-list a { color: var(--color-accent); }

@@ -62,6 +62,10 @@
     <h2>Agent profile</h2>
     <dl>
       <dt>Platform</dt><dd>{{ profile.platform or '—' }}</dd>
+      {% if agent.rank is not none %}
+      <dt>Rank</dt>
+      <dd>#{{ agent.rank }}{% if agent.network_rank is not none and agent.network_rank != agent.rank %} &middot; network #{{ agent.network_rank }}{% endif %}</dd>
+      {% endif %}
       {% if profile.termix_category %}
         <dt>Source category</dt><dd>{{ profile.termix_category }}</dd>
       {% endif %}
@@ -112,6 +116,19 @@
           not measured
         {% endif %}
       </dd>
+      {% if agent.is_endpoint_verified is not none or agent.endpoint_verified_domain or agent.endpoint_last_checked_at %}
+      <dt>Endpoint verification</dt>
+      <dd>
+        {% if agent.is_endpoint_verified %}
+          <span class="badge verified">verified</span>
+          {% if agent.endpoint_verified_domain %} &middot; <code>{{ agent.endpoint_verified_domain }}</code>{% endif %}
+        {% else %}
+          <span class="badge category">not verified</span>
+          {% if agent.endpoint_verification_error %} &middot; {{ agent.endpoint_verification_error }}{% endif %}
+        {% endif %}
+        {% if agent.endpoint_last_checked_at %} &middot; checked {{ agent.endpoint_last_checked_at.strftime('%Y-%m-%d') }}{% endif %}
+      </dd>
+      {% endif %}
       <dt>Metadata completeness</dt>
       <dd>{{ profile.metadata_completeness or 0 }}/100</dd>
       {% if profile.score_dimensions %}
@@ -563,6 +580,30 @@
     </button>
     <div id="reviews-body"></div>
   </details>
+
+  <!-- Cross-chain presence: count on the summary, the chain/token table
+       (with 8004scan links) behind the native details toggle. -->
+  {% if agent.cross_chain_links %}
+  <details class="reviews-panel cross-chain-panel">
+    <summary>Cross-chain versions ({{ agent.cross_chain_links|length }})</summary>
+    <ul class="cross-chain-list">
+      {% for link in agent.cross_chain_links %}
+        {% set cid = link.chain_id if link.chain_id is not none else 0 %}
+        {% set slug = chain_slugs.get(cid) %}
+        <li>
+          {% if slug and link.token_id is not none %}
+            <a href="https://8004scan.io/agents/{{ slug }}/{{ link.token_id }}"
+               target="_blank" rel="noopener">
+              {{ slug|title }} &middot; token {{ link.token_id }}
+            </a>
+          {% else %}
+            chain {{ cid }} &middot; token {{ link.token_id or '—' }}
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
 </article>
 <!-- Vendored ethers v6 UMD + the x402 signer (no CDN inside the container). -->
 <script src="/static/js/ethers-6.14.min.js" defer></script>

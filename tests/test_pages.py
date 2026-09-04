@@ -145,6 +145,37 @@ async def test_agent_detail_no_hired_panel_for_anonymous(client, db):
     assert "Hire again" not in body
 
 
+# Rank, cross-chain presence and endpoint verification render from cached data.
+async def test_agent_detail_rank_crosschain_endpoint(client, db):
+    from app.db.models.agent import AgentCache
+
+    aid = await _seed_one(db, 1, name="Alpha")
+    row = await db.scalar(select(AgentCache).where(AgentCache.agent_id == aid))
+    assert row is not None
+    row.rank = 42
+    row.network_rank = 42
+    row.cross_chain_links = [
+        {"chain_id": 42161, "token_id": 999},
+        {"chain_id": 137, "token_id": 888},
+        {"chain_id": 999999, "token_id": 777},
+    ]
+    row.is_endpoint_verified = False
+    row.endpoint_verification_error = "domain mismatch"
+    row.endpoint_last_checked_at = _now()
+    await db.commit()
+
+    body = client.get("/agents/56/1").text
+    assert "#42" in body
+    assert "Cross-chain versions (3)" in body
+    assert "Arbitrum" in body and "token 999" in body
+    assert "https://8004scan.io/agents/arbitrum/999" in body
+    assert "Polygon" in body and "token 888" in body
+    # Unknown chain id: no link, plain label.
+    assert "chain 999999" in body and "token 777" in body
+    assert "Endpoint verification" in body
+    assert "not verified" in body and "domain mismatch" in body
+
+
 # R2 — HTMX swap returns partial only.
 async def test_home_htmx_returns_partial(client, db):
     await _seed_one(db, 1, name="Alpha")
