@@ -80,7 +80,9 @@ services:
       # longer override these — remove the keys from this block to let the
       # panel control them (e.g. for a testnet mirror deployment).
       X402_CHAIN_ID: "56"
-      X402_RPC_URL: https://bsc-rpc.publicnode.com
+      # Official BNB Chain public seeds — publicnode rate-limits with 403
+      # during broadcast + receipt polling (2 txs per hire).
+      X402_RPC_URL: https://bsc-dataseed.bnbchain.org
     ports:
       - "8000:8000"
     # Preflight + alembic + uvicorn. The preflight block makes any missing

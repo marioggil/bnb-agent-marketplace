@@ -55,7 +55,7 @@ U_TOKEN_VERSION: Final[str] = "1"
 #: Default public RPC per chain; `X402_RPC_URL` overrides.
 _X402_RPC_DEFAULTS: Final[dict[int, str]] = {
     X402_CHAIN_TESTNET: "https://bsc-testnet-rpc.publicnode.com",
-    X402_CHAIN_MAINNET: "https://bsc-rpc.publicnode.com",
+    X402_CHAIN_MAINNET: "https://bsc-dataseed.bnbchain.org",
 }
 
 
