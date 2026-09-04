@@ -76,8 +76,11 @@ services:
       SESSION_TTL_MIN: "60"
       LOG_LEVEL: INFO
       WORKER_RATE_PER_SEC: "4"
-      X402_CHAIN_ID: "97"
-      X402_RPC_URL: https://bsc-testnet-rpc.publicnode.com
+      # Production settles on BSC MAINNET (chain 56). The panel can no
+      # longer override these — remove the keys from this block to let the
+      # panel control them (e.g. for a testnet mirror deployment).
+      X402_CHAIN_ID: "56"
+      X402_RPC_URL: https://bsc-rpc.publicnode.com
     ports:
       - "8000:8000"
     # Preflight + alembic + uvicorn. The preflight block makes any missing
