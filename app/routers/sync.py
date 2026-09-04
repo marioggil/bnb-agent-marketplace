@@ -234,3 +234,27 @@ async def sync_one_agent(
         "category": cached.category if cached is not None else None,
         "wallet": row["agent_wallet"],
     }
+
+
+#: Guards concurrent `/api/sync/reclassify` runs (own lock, like flagged).
+_reclassify_lock = threading.Lock()
+
+
+@router.post("/reclassify", dependencies=[Depends(require_sync_key)])
+async def sync_reclassify(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    """Re-classify every cached agent with the current classifier.
+
+    One-shot local pass over agent_cache (no upstream calls): applies the
+    termix/tags/description/protocol signals and fixes rows that still
+    carry the old x402-derived 'rebalancing' default. Idempotent; returns
+    the change report. 409 while another pass is in progress.
+    """
+    if not _reclassify_lock.acquire(blocking=False):
+        raise Conflict("a reclassification pass is already in progress")
+    try:
+        from app.services.reclassify import reclassify_cached_agents
+
+        report = await reclassify_cached_agents(db)
+    finally:
+        _reclassify_lock.release()
+    return report.to_dict()
