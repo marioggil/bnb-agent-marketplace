@@ -43,7 +43,7 @@ def test_mainnet_override_56(monkeypatch):
     s = _fresh()
     assert s.x402_chain_id == X402_CHAIN_MAINNET
     assert s.x402_u_token_address == X402_U_TOKEN_ADDRESS_MAINNET
-    assert s.x402_rpc_url_resolved == "https://bsc-rpc.publicnode.com"
+    assert s.x402_rpc_url_resolved == "https://bsc-dataseed.bnbchain.org"
 
 
 # D5 — RPC override wins over the per-chain default.

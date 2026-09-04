@@ -142,19 +142,13 @@ class AgentCache(Base):
     #
     # The 'oasf in supported_protocols' branch uses the `?` JSONB
     # containment operator because Postgres rejects subqueries in
-    # GENERATED column expressions. See migration 0001_initial for the
-    # matching SQL.
+    # Category column. Originally a GENERATED expression that defaulted x402
+    # rows to 'rebalancing' — dropped in migration 0009 (x402 is a payment
+    # rail, not a category); now a plain column with DEFAULT 'other'.
     category: Mapped[str] = mapped_column(
         Text,
-        Computed(
-            "CASE "
-            "WHEN x402_supported THEN 'rebalancing' "
-            "WHEN supported_protocols ? 'oasf' THEN 'rebalancing' "
-            "ELSE 'other' "
-            "END",
-            persisted=True,
-        ),
         nullable=False,
+        server_default=text("'other'"),
     )
 
     # ------------------------------------------------------------------

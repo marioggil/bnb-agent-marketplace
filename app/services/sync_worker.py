@@ -379,9 +379,10 @@ async def _maybe_enrich_category(session: AsyncSession, agent: Any, agent_id: st
         tags,
         agent.supported_protocols or [],
         agent.x402_supported,
+        agent.description,
     )
     # If the rich mapping matches the GENERATED default (rebalancing for
-    # x402/oasf rows, other otherwise), skip the UPDATE (design D3).
+    # oasf rows, other otherwise), skip the UPDATE (design D3).
     if rich in {"rebalancing", "other"}:
         return
     await session.execute(

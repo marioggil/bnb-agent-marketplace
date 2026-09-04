@@ -176,12 +176,76 @@ _PROTOCOL_HINTS: Final[dict[str, tuple[str, ...]]] = {
     "grid_trading": ("ascendex", "binance_grid"),
 }
 
+#: Free-text description hints (stage 3). Substring, case-insensitive over
+#: the lowercased description. Conservative on purpose: generic words
+#: ("management", "platform") are avoided so sparse rows fall to `other`.
+_DESCRIPTION_HINTS: Final[dict[str, tuple[str, ...]]] = {
+    "dev_automation": (
+        "deploy",
+        "website",
+        "web app",
+        "code",
+        "developer",
+        "workflow",
+        "pipeline",
+        "automation system",
+        "api integration",
+        "smart contract development",
+    ),
+    "creative_design": (
+        "design",
+        "creative",
+        "branding",
+        "image generation",
+        "logo",
+        "graphic",
+    ),
+    "marketing_content": (
+        "marketing",
+        "content",
+        "social media",
+        "seo",
+        "blog",
+        "copywriting",
+        "campaign",
+    ),
+    "data_analytics": (
+        "data analytics",
+        "data analysis",
+        "research",
+        "insights",
+        "dashboard",
+        "market research",
+        "reporting",
+    ),
+    "security_compliance": (
+        "security audit",
+        "smart contract audit",
+        "compliance",
+        "vulnerability",
+        "penetration",
+        "verification",
+    ),
+    "admin_ops": (
+        "admin",
+        "operations",
+        "scheduling",
+        "task management",
+        "community management",
+    ),
+    "grid_trading": ("trading bot", "arbitrage", "grid trading", "dca bot", "scalping"),
+    "yield_optimisation": ("yield", "staking", "liquidity farming", "defi vault"),
+    "rebalancing": ("rebalanc", "portfolio management"),
+    "health_factor_monitoring": ("liquidation", "health factor", "collateral monitoring"),
+}
+
 
 def compute_category(
     termix_category: str | None,
     tags: list[str] | None,
     supported_protocols: list[str] | None,
     x402_supported: bool,
+    description: str | None = None,
 ) -> str:
     """Return the category for a row (5-stage priority chain, design D2).
 
@@ -190,7 +254,10 @@ def compute_category(
          §4; unknown values (incl. "general") fall through, never error.
       2. `tags` — offchain tag substrings via `_TAG_HINTS`; the first
          category (in CATEGORIES order) with any matching hint wins.
-      3. `x402_supported` — the GENERATED default (`rebalancing`).
+      3. `description` — free-text hints (deploy/website/code → dev_automation
+         etc.); x402 support alone no longer classifies anything, since it is
+         a payment rail, not a category (fixes 2,840 x402 agents wrongly
+         grouped as rebalancing).
       4. `supported_protocols` — existing skill/protocol hints.
       5. `other` — mirrors the GENERATED default for sparse rows.
     """
@@ -207,8 +274,14 @@ def compute_category(
             if isinstance(tag, str) and any(hint in tag.lower() for hint in hints):
                 return cat
 
-    if x402_supported:
-        return "rebalancing"
+    if description:
+        desc = description.lower()
+        for cat in CATEGORIES:
+            hints = _DESCRIPTION_HINTS.get(cat)
+            if not hints:
+                continue
+            if any(hint in desc for hint in hints):
+                return cat
 
     protocols = [p.lower() for p in (supported_protocols or []) if isinstance(p, str)]
 

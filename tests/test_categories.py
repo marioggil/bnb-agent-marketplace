@@ -51,9 +51,37 @@ def test_tags_decide_when_no_termix() -> None:
     assert compute_category(None, ["yield", "staking"], ["Web"], False) == "yield_optimisation"
 
 
-# x402 maps to rebalancing only when no richer signal matched.
-def test_x402_maps_to_rebalancing_without_richer_signals() -> None:
-    assert compute_category(None, [], ["Web"], True) == "rebalancing"
+# x402 is a payment rail, not a category: it no longer maps to rebalancing
+# on its own (fix: 2,840 x402 agents wrongly grouped).
+def test_x402_alone_does_not_map_to_rebalancing() -> None:
+    assert compute_category(None, [], ["Web"], True) == "other"
+
+
+# Description hints (stage 3) classify free-text agents.
+def test_description_hint_maps_to_dev_automation() -> None:
+    assert (
+        compute_category(
+            None,
+            [],
+            ["MCP", "A2A", "Web"],
+            True,
+            "EZCTO Deployer Agent is an autonomous automation system that generates websites",
+        )
+        == "dev_automation"
+    )
+
+
+def test_description_hint_is_case_insensitive() -> None:
+    assert (
+        compute_category(
+            None, [], [], False, "AI Trading Bot for GRID strategies"
+        )
+        == "grid_trading"
+    )
+
+
+def test_description_without_hints_falls_to_other() -> None:
+    assert compute_category(None, [], [], True, "A generic autonomous system") == "other"
 
 
 # "general" falls through to the next stage (tags), never errors.
