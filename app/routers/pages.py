@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -243,6 +244,27 @@ async def _flagged_addresses_set() -> set[str]:
     async with AsyncSessionLocal() as session:
         rows = (await session.scalars(select(FlaggedAddress.address))).all()
     return set(rows)
+
+
+def _hire_pricing(settings: Any) -> tuple[Decimal, Decimal | None]:
+    """(total_price, fee_usd) for the hire CTA.
+
+    Model-A commission: when a fee wallet is configured the user pays
+    price + fee; otherwise the total is just the flat price and fee is None.
+    """
+    agent_price = settings.x402_default_price_usd
+    fee = settings.x402_fee_amount_usd if (settings.x402_fee_wallet or "").strip() else None
+    return agent_price + (fee or Decimal("0")), fee
+
+
+def _tx_explorer_base() -> str:
+    """Block explorer base URL for the configured payment chain.
+
+    Shared by the hire history and the reviews partial (agent-feedbacks):
+    testnet chain id 97 → testnet.bscscan.com, mainnet → bscscan.com.
+    """
+    settings = get_settings()
+    return "https://testnet.bscscan.com" if settings.x402_chain_id == 97 else "https://bscscan.com"
 
 
 def _parse_compare_ids(ids: str) -> list[tuple[int, int]]:
@@ -546,7 +568,7 @@ async def home(
         platform=platform,
     )
     total_pages = (total + page_size - 1) // page_size if total else 0
-    hire_price_usd = get_settings().x402_default_price_usd
+    hire_price_usd, _ = _hire_pricing(get_settings())
     hires = await _hires_count([a.agent_id for a in items])
     flagged_addresses = await _flagged_addresses_set()
     is_htmx = request.headers.get("HX-Request", "").lower() == "true"
@@ -742,10 +764,29 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             )
     my_paid_count = sum(1 for h in my_hires if h.status == "paid")
     settings = get_settings()
-    tx_explorer_base = (
-        "https://testnet.bscscan.com" if settings.x402_chain_id == 97 else "https://bscscan.com"
-    )
+    tx_explorer_base = _tx_explorer_base()
     flagged_addresses = await _flagged_addresses_set()
+
+    # Locally mirrored individual reviews (agent-feedbacks): the summary
+    # count drives the collapsible "Reviews (N)" panel; the rows themselves
+    # load lazily via the /feedbacks HTMX endpoint.
+    from sqlalchemy import func as _count_func
+
+    from app.db.models.agent_feedback import AgentFeedback
+
+    async with AsyncSessionLocal() as session:
+        feedback_total = int(
+            await session.scalar(
+                select(_count_func.count())
+                .select_from(AgentFeedback)
+                .where(AgentFeedback.agent_id == row.agent_id)
+            )
+            or 0
+        )
+
+    # Model-A marketplace fee: the user pays price + fee when a fee wallet
+    # is configured; the CTA shows the total and the panel the breakdown.
+    hire_total_usd, hire_fee_usd = _hire_pricing(settings)
 
     return _render(
         request,
@@ -753,7 +794,9 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
         {
             "agent": row,
             "pay_to": row.agent_wallet,
-            "hire_price_usd": settings.x402_default_price_usd,
+            "hire_price_usd": hire_total_usd,
+            "hire_agent_price_usd": settings.x402_default_price_usd,
+            "hire_fee_usd": hire_fee_usd,
             "hires": hires,
             "my_hires": my_hires,
             "my_last_hire": my_hires[0] if my_hires else None,

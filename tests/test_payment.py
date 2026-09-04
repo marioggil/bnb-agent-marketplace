@@ -100,6 +100,99 @@ def test_challenge_rejects_invalid_inputs(kwargs):
         build_challenge(**base)
 
 
+# Model-A marketplace fee: a second accept is appended with the fee amount.
+def test_challenge_with_fee_two_accepts():
+    fee_wallet = "0x" + "88" * 20
+    challenge = build_challenge(
+        FIXTURE["accepts"][0]["payTo"],
+        FIXTURE["resource"]["url"],
+        amount_wei=_AMOUNT_WEI,
+        chain_id=97,
+        fee_pay_to=fee_wallet,
+        fee_amount_wei=3 * 10**16,
+    )
+    assert len(challenge["accepts"]) == 2
+    agent_accept, fee_accept = challenge["accepts"]
+    assert agent_accept["payTo"] == FIXTURE["accepts"][0]["payTo"]
+    assert int(agent_accept["amount"]) == _AMOUNT_WEI
+    assert fee_accept["payTo"] == fee_wallet
+    assert int(fee_accept["amount"]) == 3 * 10**16
+    # Same network/asset/window as the hire payment.
+    assert fee_accept["network"] == agent_accept["network"]
+    assert fee_accept["asset"] == agent_accept["asset"]
+    assert fee_accept["maxTimeoutSeconds"] == agent_accept["maxTimeoutSeconds"]
+
+
+def test_challenge_fee_rejects_bad_wallet_or_amount():
+    base = {
+        "pay_to": FIXTURE["accepts"][0]["payTo"],
+        "resource_url": FIXTURE["resource"]["url"],
+        "amount_wei": _AMOUNT_WEI,
+        "chain_id": 97,
+        "fee_pay_to": "not-an-address",
+        "fee_amount_wei": 3 * 10**16,
+    }
+    with pytest.raises(ValidationError):
+        build_challenge(**base)
+    base["fee_pay_to"] = "0x" + "88" * 20
+    base["fee_amount_wei"] = -1
+    with pytest.raises(ValidationError):
+        build_challenge(**base)
+
+
+# Decode: payload.fee is normalized into DecodedPayment.fee.
+def test_decode_envelope_with_fee(payer, signed_envelope):
+    fee_wallet = "0x" + "88" * 20
+    challenge = build_challenge(
+        FIXTURE["accepts"][0]["payTo"],
+        FIXTURE["resource"]["url"],
+        amount_wei=_AMOUNT_WEI,
+        chain_id=97,
+        fee_pay_to=fee_wallet,
+        fee_amount_wei=3 * 10**16,
+    )
+    decoded = decode_envelope(signed_envelope(payer, challenge, include_fee=True))
+    assert decoded.fee is not None
+    assert decoded.fee.payer == payer.address
+    assert decoded.fee.amount == 3 * 10**16
+    assert decoded.fee.authorization["to"] == fee_wallet
+    assert decoded.fee.chain_id == 97
+
+
+# Decode: a fee signed by a different payer is rejected.
+def test_decode_envelope_fee_wrong_payer_rejected(payer, signed_envelope):
+    import base64
+    import json
+    import time
+
+    from eth_account import Account as EthAccount
+
+    from tests.conftest import _sign_authorization
+
+    fee_wallet = "0x" + "88" * 20
+    challenge = build_challenge(
+        FIXTURE["accepts"][0]["payTo"],
+        FIXTURE["resource"]["url"],
+        amount_wei=_AMOUNT_WEI,
+        chain_id=97,
+        fee_pay_to=fee_wallet,
+        fee_amount_wei=3 * 10**16,
+    )
+    envelope = json.loads(
+        base64.b64decode(signed_envelope(payer, challenge, include_fee=True)).decode("utf-8")
+    )
+    other = EthAccount.create()
+    fee_auth, fee_sig = _sign_authorization(
+        other, challenge["accepts"][1], now=int(time.time())
+    )
+    envelope["payload"]["fee"] = {"signature": fee_sig, "authorization": fee_auth}
+    evil = base64.b64encode(json.dumps(envelope).encode("utf-8")).decode("ascii")
+    from app.errors import InvalidEnvelope
+
+    with pytest.raises(InvalidEnvelope):
+        decode_envelope(evil)
+
+
 # ---------------------------------------------------------------------------
 # X3 — envelope decode (X-PAYMENT / PAYMENT-SIGNATURE dialects)
 # ---------------------------------------------------------------------------

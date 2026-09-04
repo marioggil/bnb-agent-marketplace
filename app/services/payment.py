@@ -96,6 +96,10 @@ class DecodedPayment:
     authorization: dict[str, Any]
     signature: str
     raw: dict[str, Any]
+    #: Optional marketplace-fee payment (same payer, fee wallet recipient).
+    #: Present when the challenge carried a second accept and the client
+    #: signed it into `payload.fee` (model-A commission).
+    fee: "DecodedPayment | None" = None
 
 
 @dataclass(frozen=True)
@@ -174,34 +178,50 @@ def build_challenge(
     amount_wei: int,
     timeout_s: int = DEFAULT_TIMEOUT_SECONDS,
     chain_id: int,
+    fee_pay_to: str | None = None,
+    fee_amount_wei: int | None = None,
 ) -> dict[str, Any]:
     """402 challenge body, frozen to D4: exact scheme, eip155:<chain_id>,
-    $U/eip3009, payTo, amount wei str, window 1..480 (default 300)."""
+    $U/eip3009, payTo, amount wei str, window 1..480 (default 300).
+
+    When `fee_pay_to` + `fee_amount_wei` are given, a second accept is
+    appended for the marketplace fee (model-A commission) so the client
+    signs both authorizations.
+    """
     _validate_address(pay_to, "pay_to")
     if not isinstance(amount_wei, int) or amount_wei < 0:
         raise ValidationError("amount_wei must be a non-negative integer")
     if not 1 <= timeout_s <= MAX_TIMEOUT_SECONDS:
         raise ValidationError(f"maxTimeoutSeconds must be in 1..{MAX_TIMEOUT_SECONDS}")
     settings = get_settings()
+
+    def _accept(to: str, amount: int) -> dict[str, Any]:
+        return {
+            "scheme": "exact",
+            "network": f"eip155:{chain_id}",
+            "asset": settings.x402_u_token_address,
+            "payTo": to,
+            "amount": str(amount),
+            "maxTimeoutSeconds": timeout_s,
+            "extra": {
+                "name": U_TOKEN_NAME,
+                "version": U_TOKEN_VERSION,
+                "assetTransferMethod": EIP3009_RAIL,
+            },
+        }
+
+    accepts = [_accept(pay_to, amount_wei)]
+    if fee_pay_to and fee_amount_wei is not None:
+        if fee_amount_wei < 0:
+            raise ValidationError("fee_amount_wei must be a non-negative integer")
+        _validate_address(fee_pay_to, "fee_pay_to")
+        accepts.append(_accept(fee_pay_to, fee_amount_wei))
+
     return {
         "x402Version": 2,
         "error": "payment required",
         "resource": {"url": resource_url},
-        "accepts": [
-            {
-                "scheme": "exact",
-                "network": f"eip155:{chain_id}",
-                "asset": settings.x402_u_token_address,
-                "payTo": pay_to,
-                "amount": str(amount_wei),
-                "maxTimeoutSeconds": timeout_s,
-                "extra": {
-                    "name": U_TOKEN_NAME,
-                    "version": U_TOKEN_VERSION,
-                    "assetTransferMethod": EIP3009_RAIL,
-                },
-            }
-        ],
+        "accepts": accepts,
     }
 
 
@@ -270,6 +290,46 @@ def decode_envelope(header: str | None) -> DecodedPayment:
     asset = accepted.get("asset") if isinstance(accepted, dict) else None
     token = _as_address(asset, "accepted.asset") if asset is not None else ZERO_ADDRESS
 
+    # Optional marketplace-fee payment signed into payload.fee (model A).
+    fee: DecodedPayment | None = None
+    fee_payload = payload.get("fee")
+    if fee_payload is not None:
+        if not isinstance(fee_payload, dict) or not isinstance(
+            fee_payload.get("authorization"), dict
+        ):
+            raise InvalidEnvelope("payload.fee must carry an eip3009 authorization")
+        fee_auth_payload = fee_payload["authorization"]
+        try:
+            fee_auth: dict[str, Any] = {
+                "from": _as_address(fee_auth_payload["from"], "fee.authorization.from"),
+                "to": _as_address(fee_auth_payload["to"], "fee.authorization.to"),
+                "value": _as_numeric(fee_auth_payload["value"], "fee.authorization.value"),
+                "validAfter": _as_numeric(
+                    fee_auth_payload["validAfter"], "fee.authorization.validAfter"
+                ),
+                "validBefore": _as_numeric(
+                    fee_auth_payload["validBefore"], "fee.authorization.validBefore"
+                ),
+                "nonce": _as_hex(fee_auth_payload["nonce"], "fee.authorization.nonce"),
+            }
+        except KeyError as exc:
+            raise InvalidEnvelope(f"fee authorization field {exc.args[0]!r} is missing") from exc
+        fee_signature = fee_payload.get("signature")
+        if not isinstance(fee_signature, str) or not _HEX_RE.match(fee_signature):
+            raise InvalidEnvelope("payload.fee.signature must be a hex string")
+        if fee_auth["from"].lower() != auth["from"].lower():
+            raise InvalidEnvelope("fee authorization must be signed by the same payer")
+        fee = DecodedPayment(
+            rail=EIP3009_RAIL,
+            payer=fee_auth["from"],
+            amount=int(fee_auth["value"]),
+            token=token,
+            chain_id=chain_id,
+            authorization=fee_auth,
+            signature=fee_signature,
+            raw=envelope,
+        )
+
     return DecodedPayment(
         rail=EIP3009_RAIL,
         payer=auth["from"],
@@ -279,6 +339,7 @@ def decode_envelope(header: str | None) -> DecodedPayment:
         authorization=auth,
         signature=signature,
         raw=envelope,
+        fee=fee,
     )
 
 

@@ -169,6 +169,20 @@ class Settings(BaseSettings):
         ge=Decimal("0"),
         description="Flat price of a hire in USD; converted to $U wei.",
     )
+    # Marketplace fee: a second EIP-3009 payment sent alongside the hire
+    # price to `x402_fee_wallet` (model A: the user pays price + fee).
+    # Empty wallet disables the fee entirely (backwards compatible).
+    x402_fee_wallet: str = Field(
+        default="",
+        alias="X402_FEE_WALLET",
+        description="Marketplace fee recipient; empty disables the fee.",
+    )
+    x402_fee_amount_usd: Decimal = Field(
+        default=Decimal("0.03"),
+        alias="X402_FEE_AMOUNT_USD",
+        ge=Decimal("0"),
+        description="Marketplace fee per hire in USD; converted to $U wei.",
+    )
     # Pinned $U addresses per chain (D2). Public constants — overridable for
     # mirror/test deployments.
     x402_u_token_address_56: str = Field(

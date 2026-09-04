@@ -432,10 +432,11 @@ def _sign_in_with_key(client) -> tuple[Account, str, str]:
     return Account.from_key(pk), address, cookie
 
 
-def build_signed_envelope(
+def _sign_authorization(
     payer: Account,
-    challenge: dict,
+    accept: dict,
     *,
+    now: int,
     from_: str | None = None,
     to: str | None = None,
     value: int | None = None,
@@ -444,24 +445,13 @@ def build_signed_envelope(
     nonce: str | None = None,
     network: str | None = None,
     token: str | None = None,
-) -> str:
-    """Regenerable D4 X-PAYMENT envelope (base64) signed by `payer`.
-
-    Defaults mirror the challenge's accepts[0] and D7 validity (validAfter
-    now-120, validBefore now+maxTimeoutSeconds). Each call draws a fresh
-    random nonce — no static signatures in the suite.
-    """
-    accept = challenge["accepts"][0]
+) -> tuple[dict, str]:
+    """Sign one EIP-712 TransferWithAuthorization for an accept; returns
+    (authorization, signature). Shared by the hire and fee payments."""
     if network is not None:
-        # Keep `accepted.network` in sync with the envelope network so
-        # decode's `_chain_id_of` (which prefers accepted.network) sees the
-        # override. Mutates the challenge's accepts entry by design.
         accept["network"] = network
     if token is not None:
-        # Same for the asset: keep accepted.asset in sync so decode sees
-        # the override instead of the challenge's original token.
         accept["asset"] = token
-    now = int(time.time())
     authorization = {
         "from": from_ or payer.address,
         "to": to or accept["payTo"],
@@ -504,16 +494,59 @@ def build_signed_envelope(
     signature = payer.sign_message(typed).signature.hex()
     if not signature.startswith("0x"):
         signature = "0x" + signature
+    return authorization, signature
+
+
+def build_signed_envelope(
+    payer: Account,
+    challenge: dict,
+    *,
+    include_fee: bool = False,
+    from_: str | None = None,
+    to: str | None = None,
+    value: int | None = None,
+    valid_after: int | None = None,
+    valid_before: int | None = None,
+    nonce: str | None = None,
+    network: str | None = None,
+    token: str | None = None,
+) -> str:
+    """Regenerable D4 X-PAYMENT envelope (base64) signed by `payer`.
+
+    Defaults mirror the challenge's accepts[0] and D7 validity (validAfter
+    now-120, validBefore now+maxTimeoutSeconds). Each call draws a fresh
+    random nonce — no static signatures in the suite. With `include_fee=True`
+    and a second accept present, `payload.fee` carries the fee payment
+    (model-A marketplace commission).
+    """
+    accept = challenge["accepts"][0]
+    now = int(time.time())
+    authorization, signature = _sign_authorization(
+        payer,
+        accept,
+        now=now,
+        from_=from_,
+        to=to,
+        value=value,
+        valid_after=valid_after,
+        valid_before=valid_before,
+        nonce=nonce,
+        network=network,
+        token=token,
+    )
+    payload: dict = {"signature": signature, "authorization": authorization}
+    if include_fee and len(challenge["accepts"]) > 1:
+        fee_auth, fee_sig = _sign_authorization(
+            payer, challenge["accepts"][1], now=now, network=network, token=token
+        )
+        payload["fee"] = {"signature": fee_sig, "authorization": fee_auth}
     envelope = {
         "x402Version": challenge["x402Version"],
         "scheme": accept["scheme"],
         "network": network or accept["network"],
         "resource": challenge["resource"],
         "accepted": accept,
-        "payload": {
-            "signature": signature,
-            "authorization": authorization,
-        },
+        "payload": payload,
     }
     return base64.b64encode(json.dumps(envelope).encode("utf-8")).decode("ascii")
 

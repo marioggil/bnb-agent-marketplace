@@ -77,6 +77,7 @@
         var hire = await create.json();
         var challenge = hire.challenge;
         var accept = challenge.accepts[0];
+        var feeAccept = challenge.accepts.length > 1 ? challenge.accepts[1] : null;
 
         if (typeof window.ethereum === "undefined") {
           throw new Error("no wallet detected (window.ethereum missing)");
@@ -85,14 +86,6 @@
         var signer = await provider.getSigner();
 
         var now = Math.floor(Date.now() / 1000); // seconds
-        var authorization = {
-          from: await signer.getAddress(),
-          to: accept.payTo,
-          value: BigInt(accept.amount),
-          validAfter: now - 120, // D7 Studio backdate rule
-          validBefore: now + accept.maxTimeoutSeconds,
-          nonce: randomNonceHex(),
-        };
         var domain = {
           name: accept.extra.name,
           version: accept.extra.version,
@@ -109,15 +102,21 @@
             { name: "nonce", type: "bytes32" }
           ]
         };
-        var signature = await signer.signTypedData(domain, types, authorization);
 
-        var envelope = {
-          x402Version: challenge.x402Version,
-          scheme: accept.scheme,
-          network: accept.network,
-          resource: challenge.resource,
-          accepted: accept,
-          payload: {
+        // Sign the hire payment (accepts[0]) and, when the challenge carries
+        // a marketplace-fee accept (model A), the fee payment too — each
+        // with its own fresh nonce (D7 validity window applies to both).
+        async function signPayment(target) {
+          var authorization = {
+            from: await signer.getAddress(),
+            to: target.payTo,
+            value: BigInt(target.amount),
+            validAfter: now - 120, // D7 Studio backdate rule
+            validBefore: now + target.maxTimeoutSeconds,
+            nonce: randomNonceHex(),
+          };
+          var signature = await signer.signTypedData(domain, types, authorization);
+          return {
             signature: signature,
             authorization: {
               from: authorization.from,
@@ -127,7 +126,28 @@
               validBefore: authorization.validBefore.toString(),
               nonce: authorization.nonce
             }
-          }
+          };
+        }
+        var main = await signPayment(accept);
+        var payload = {
+          signature: main.signature,
+          authorization: main.authorization,
+        };
+        if (feeAccept) {
+          var fee = await signPayment(feeAccept);
+          payload.fee = {
+            signature: fee.signature,
+            authorization: fee.authorization,
+          };
+        }
+
+        var envelope = {
+          x402Version: challenge.x402Version,
+          scheme: accept.scheme,
+          network: accept.network,
+          resource: challenge.resource,
+          accepted: accept,
+          payload: payload,
         };
 
         var pay = await fetch("/api/hires/" + hire.id + "/pay", {

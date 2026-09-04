@@ -76,6 +76,84 @@ async def test_pay_happy_path(client, db, fake_broadcaster, signed_envelope):
     assert len(fake_broadcaster.calls) == 1
 
 
+# Model-A marketplace fee: challenge carries 2 accepts (agent + fee wallet),
+# pay verifies both and broadcasts fee first, then the hire payment.
+async def test_pay_with_marketplace_fee(
+    client, db, fake_broadcaster, signed_envelope, monkeypatch
+):
+    from app.config import _settings_cache
+
+    _FEE_WALLET = "0x" + "88" * 20
+    monkeypatch.setenv("X402_FEE_WALLET", _FEE_WALLET)
+    _settings_cache.cache_clear()
+    try:
+        account, _address, cookie = _sign_in_with_key(client)
+        aid = await _seed_agent(db, 20)
+        hire = _create_hire(client, cookie, aid)
+        accepts = hire["challenge"]["accepts"]
+        assert len(accepts) == 2
+        assert accepts[1]["payTo"] == _FEE_WALLET
+        assert int(accepts[1]["amount"]) == int(0.03 * 10**18)
+
+        pay = client.post(
+            f"/api/hires/{hire['id']}/pay",
+            cookies=_ck(cookie),
+            headers={
+                **_ch(cookie),
+                "X-PAYMENT": signed_envelope(account, hire["challenge"], include_fee=True),
+            },
+        )
+        assert pay.status_code == 200, pay.text
+        assert pay.json()["status"] == "paid"
+        assert len(fake_broadcaster.calls) == 2
+        fee_call, main_call = fake_broadcaster.calls
+        assert fee_call["decoded"].authorization["to"] == _FEE_WALLET
+        assert main_call["decoded"].authorization["to"] == _PAY_TO
+    finally:
+        _settings_cache.cache_clear()
+
+
+# A fee envelope sent with no fee wallet configured is rejected (409).
+async def test_pay_fee_without_fee_wallet_config(
+    client, db, fake_broadcaster, signed_envelope, monkeypatch
+):
+    import base64
+    import json
+    import time
+
+    from tests.conftest import _sign_authorization
+
+    from app.config import _settings_cache
+
+    monkeypatch.setenv("X402_FEE_WALLET", "")
+    _settings_cache.cache_clear()
+    try:
+        account, _address, cookie = _sign_in_with_key(client)
+        aid = await _seed_agent(db, 21)
+        # No fee wallet → the challenge has a single accept, so we craft a
+        # fee envelope against that accept (client misbehavior).
+        hire = _create_hire(client, cookie, aid)
+        challenge = hire["challenge"]
+        assert len(challenge["accepts"]) == 1
+        envelope = json.loads(
+            base64.b64decode(signed_envelope(account, challenge)).decode("utf-8")
+        )
+        fee_auth, fee_sig = _sign_authorization(
+            account, challenge["accepts"][0], now=int(time.time())
+        )
+        envelope["payload"]["fee"] = {"signature": fee_sig, "authorization": fee_auth}
+        evil = base64.b64encode(json.dumps(envelope).encode("utf-8")).decode("ascii")
+        pay = client.post(
+            f"/api/hires/{hire['id']}/pay",
+            cookies=_ck(cookie),
+            headers={**_ch(cookie), "X-PAYMENT": evil},
+        )
+        assert pay.status_code == 409, pay.text
+        assert len(fake_broadcaster.calls) == 0
+    finally:
+        _settings_cache.cache_clear()
+
+
 # X3 — PAYMENT-SIGNATURE dialect header also accepted.
 async def test_pay_via_payment_signature_header(client, db, fake_broadcaster, signed_envelope):
     account, _address, cookie = _sign_in_with_key(client)

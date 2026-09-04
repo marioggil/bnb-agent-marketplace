@@ -100,6 +100,10 @@ async def create_hire(
     settings = get_settings()
     amount = settings.x402_default_price_usd
     amount_wei = int(amount * _WEI_PER_UNIT)
+    fee_wallet = (settings.x402_fee_wallet or "").strip()
+    fee_wei = (
+        int(settings.x402_fee_amount_usd * _WEI_PER_UNIT) if fee_wallet else None
+    )
     now = datetime.now(tz=timezone.utc)
 
     await sweep_expired(db, user)
@@ -122,6 +126,8 @@ async def create_hire(
         amount_wei=amount_wei,
         timeout_s=DEFAULT_TIMEOUT_SECONDS,
         chain_id=settings.x402_chain_id,
+        fee_pay_to=fee_wallet or None,
+        fee_amount_wei=fee_wei,
     )
     await db.commit()
     await db.refresh(row)
@@ -175,8 +181,35 @@ async def pay_hire(
         payer=user.address,
         now=now,
     )
+    # Marketplace fee (model A): the same payer signs a second authorization
+    # to the configured fee wallet; both are verified before any broadcast.
+    fee_wei = None
+    if decoded.fee is not None:
+        fee_wallet = (settings.x402_fee_wallet or "").strip()
+        if not fee_wallet:
+            raise ChallengeExpired("fee payment sent but no fee wallet configured")
+        fee_wei = int(settings.x402_fee_amount_usd * _WEI_PER_UNIT)
+        verify_payment(
+            decoded.fee,
+            chain_id=settings.x402_chain_id,
+            token_cfg=token_cfg,
+            pay_to=fee_wallet,
+            amount_wei=fee_wei,
+            payer=user.address,
+            now=now,
+        )
 
     try:
+        # Fee first: if it cannot settle, the hire payment is never sent.
+        # The principal settles last so the receipt hash is the hire itself.
+        if decoded.fee is not None:
+            await broadcaster.broadcast(
+                decoded.fee,
+                token_cfg,
+                facilitator_key=settings.x402_facilitator_key,
+                rpc_url=settings.x402_rpc_url_resolved,
+                now=now,
+            )
         result = await broadcaster.broadcast(
             decoded,
             token_cfg,

@@ -483,6 +483,9 @@
     </div>
     {% endif %}
     <p class="hire-price">Hire for ${{ '%.2f'|format(hire_price_usd) }}</p>
+    {% if hire_fee_usd %}
+    <p class="hint">Includes ${{ '%.2f'|format(hire_fee_usd) }} marketplace fee.</p>
+    {% endif %}
     {% if pay_to %}
     <button id="hire-cta" type="button" class="btn btn-primary"
             data-agent-id="{{ agent.agent_id }}"
