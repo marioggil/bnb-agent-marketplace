@@ -471,6 +471,17 @@ def _build_agent_profile(agent: Any) -> dict[str, Any]:
     platform = _hex_to_text(_onchain_value(agent, "platform"))
     if not platform and off.get("termix"):
         platform = "Termix"
+    # Fallback for agents whose raw_metadata.onchain is empty or
+    # corrupted (e.g. [null] from migration 0010 wrapping JSON null):
+    # derive the platform from the services.web.endpoint host. EvoEvo
+    # agents expose the marketplace URL on evoevo.ai; add more here
+    # as we discover other platforms' URL patterns.
+    if not platform and isinstance(services.get("web"), dict):
+        _web_ep_fb = services["web"].get("endpoint", "")
+        if isinstance(_web_ep_fb, str):
+            if "evoevo.ai" in _web_ep_fb:
+                platform = "EvoEvo"
+            # Future: "termix.network", "ave.ai", "debot.ai", etc.
 
     a2a = services.get("a2a") or {}
     if not a2a:
