@@ -109,6 +109,7 @@ async def test_agent_detail_shows_hired_panel_and_hire_again(client, db):
     agent = await db.scalar(select(AgentCache).where(AgentCache.agent_id == aid))
     assert agent is not None
     agent.agent_wallet = "0x" + "77" * 20
+    agent.x402_supported = True
     await db.commit()
 
     address, cookie = _sign_in(client)
@@ -134,7 +135,7 @@ async def test_agent_detail_shows_hired_panel_and_hire_again(client, db):
     body = client.get("/agents/56/1").text
     assert "Hired by you" in body
     assert "You hired this agent once" in body
-    assert "Hire again for $1.00" in body
+    assert "Hire again for $1.03" in body
     assert "view transaction" in body
 
 

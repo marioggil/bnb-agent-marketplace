@@ -28,6 +28,7 @@ async def _seed_one(session, token_id: int = 1, wallet: str | None = "0x" + "77"
             registry_address=BSC_IDENTITY_REGISTRY,
             name="Alpha",
             agent_wallet=wallet,
+            x402_supported=wallet is not None,
             agent_url=_AGENT_URL,
             supported_protocols=[],
             cross_chain_versions=[],
@@ -50,7 +51,7 @@ def _detail(client, token_id: int = 1) -> str:
 async def test_cta_renders_price_and_is_enabled(client, db):
     await _seed_one(db, 1)
     body = _detail(client, 1)
-    assert "Hire for $1.00" in body
+    assert "Hire for $1.03" in body
     assert 'id="hire-cta"' in body
     assert "disabled" not in body
     # W3 — redirect target wiring: http(s) agent_url exposed to the signer.
@@ -66,7 +67,7 @@ async def test_cta_disabled_without_wallet(client, db):
     assert 'id="hire-cta"' in body
     assert "disabled" in body
     assert "no payment wallet (payTo) is registered" in body
-    assert "Hire for $1.00" in body
+    assert "Hire for $1.03" in body
 
 
 # W4 — status UI container with all lifecycle states.
