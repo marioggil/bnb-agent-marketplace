@@ -197,7 +197,7 @@ class AlchemyOnchainClient:
         wallet_address: str,
         token_address: str = U_TOKEN_MAINNET,
         min_amount: Decimal = Decimal("0.01"),
-        max_blocks: int = 10000,
+        max_blocks: int = 1000,
     ) -> dict[str, Any]:
         """Get hire statistics for an agent wallet.
 
@@ -207,7 +207,9 @@ class AlchemyOnchainClient:
             wallet_address: Agent's wallet address
             token_address: $U token contract address
             min_amount: Minimum amount to consider (filters dust)
-            max_blocks: How far back to scan (10000 = ~8 hours)
+            max_blocks: How far back to scan (1000 = ~50min on BSC;
+                default lowered from 10000 in 2026-09 because the 1000-call
+                loop was hanging the /api/hires/onchain endpoint 25s+)
 
         Returns:
             {
