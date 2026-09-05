@@ -111,6 +111,8 @@
           {% if flagged_addresses is defined and (profile.wallet | lower) in flagged_addresses %}
             <span class="badge risk" title="Payment wallet appears in the OFAC sanctioned-address lists">&#9888; flagged wallet</span>
           {% endif %}
+        {% elif profile.wallet %}
+          <code>{{ profile.wallet[:6] }}&hellip;{{ profile.wallet[-4:] }}</code> &mdash; not x402-supported
         {% else %}
           Not hireable &mdash; no payment wallet
         {% endif %}
