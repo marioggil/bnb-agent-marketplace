@@ -483,7 +483,7 @@
           </div>
         </dd>
       {% endif %}
-      {% if profile.capabilities %}
+      {% if profile.capabilities is mapping %}
         <dt>Capabilities</dt>
         <dd>
           {% for cap, enabled in profile.capabilities.items() %}

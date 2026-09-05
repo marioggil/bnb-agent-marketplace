@@ -576,6 +576,11 @@ def _build_agent_profile(agent: Any) -> dict[str, Any]:
             if len(description_urls) >= 3:
                 break
 
+    # Capabilities — upstream occasionally returns a list instead of
+    # the EIP-8004 dict shape; coerce to dict so the template doesn't
+    # crash on .items() (defense in depth alongside the template guard).
+    _caps_raw = off.get("capabilities")
+
     return {
         "platform": platform,
         "termix_category": (termix.get("profile") or {}).get("category"),
@@ -630,8 +635,10 @@ def _build_agent_profile(agent: Any) -> dict[str, Any]:
         "social_links": social_links,
         # Provider info
         "provider": off.get("provider") or {},
-        # Capabilities
-        "capabilities": off.get("capabilities") or {},
+        # Capabilities — upstream occasionally returns a list instead of
+        # the EIP-8004 dict shape; coerce to dict so the template doesn't
+        # crash on .items() (defense in depth alongside the template guard).
+        "capabilities": _caps_raw if isinstance(_caps_raw, dict) else {},
         # Documentation
         "documentation_url": off.get("documentationUrl"),
         # Protocol info
