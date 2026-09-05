@@ -624,6 +624,13 @@ def _build_agent_profile(agent: Any) -> dict[str, Any]:
             if platform == "Termix" and agent.token_id is not None
             else None
         ),
+        # EvoEvo platform link: EvoEvo agents already expose the marketplace
+        # URL in services.web.endpoint (e.g. https://evoevo.ai/agent/detail?id=...)
+        # so we just pass through external_web_url when the platform is EvoEvo.
+        # Verified for 3,463 EvoEvo agents in production (2026-09).
+        "evoevo_agent_url": (
+            external_web_url if platform == "EvoEvo" else None
+        ),
     }
 
 

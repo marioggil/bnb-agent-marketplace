@@ -299,6 +299,9 @@
   {% if evoevo_card %}
   <section class="agent-profile evoevo-card">
     <h2>EvoEvo live data</h2>
+    {% if profile.evoevo_agent_url %}
+    <p><a href="{{ profile.evoevo_agent_url }}" target="_blank" rel="noopener">View on EvoEvo &rarr;</a></p>
+    {% endif %}
     <dl>
       {% if evoevo_card.get('name') %}
         <dt>Registration name</dt><dd>{{ evoevo_card.name }}</dd>
