@@ -482,6 +482,19 @@ def _build_agent_profile(agent: Any) -> dict[str, Any]:
             if "evoevo.ai" in _web_ep_fb:
                 platform = "EvoEvo"
             # Future: "termix.network", "ave.ai", "debot.ai", etc.
+    # Display-only fallback (no URL invented) for platforms whose
+    # agents don't expose a discoverable marketplace URL — we just
+    # label them so users know the agent belongs to a specific
+    # platform. Verified 2026-09: Ave.ai (726 agents in cache, site
+    # exists but has no /agent/<id> pages), Debot (0 in cache,
+    # SSL expired on www.).
+    if not platform:
+        _name_lower = (agent.name or "").lower()
+        _desc_lower = (agent.description or "").lower()
+        if "ave.ai" in _name_lower or "ave.ai" in _desc_lower:
+            platform = "Ave.ai"
+        elif "debot" in _name_lower or "debot" in _desc_lower:
+            platform = "Debot"
 
     a2a = services.get("a2a") or {}
     if not a2a:
