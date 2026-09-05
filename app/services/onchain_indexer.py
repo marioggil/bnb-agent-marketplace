@@ -87,6 +87,29 @@ def _extract_addr(topic: str | bytes) -> str:
     return "0x" + topic[-40:]
 
 
+_HEX_CHARS = frozenset("0123456789abcdef")
+
+
+def _canon_addr(addr: str | None) -> str | None:
+    """Canonicalize an EVM address to ``0x`` + 40 lowercase hex.
+
+    Accepts mixed-case / EIP-55 inputs, tolerates a missing ``0x`` prefix and
+    surrounding whitespace, and returns ``None`` for unparseable inputs so a
+    corrupt row can never poison the wallet-to-agent dict. The realtime
+    paths feed ``_extract_addr`` output (which is already canonical), so
+    this helper is a strict-superset safety net that also lets the backfill
+    script accept raw, dirty data from older rows.
+    """
+    if not addr:
+        return None
+    s = addr.strip().lower()
+    if s.startswith("0x"):
+        s = s[2:]
+    if len(s) != 40 or any(c not in _HEX_CHARS for c in s):
+        return None
+    return "0x" + s
+
+
 def _extract_token_id(topic: str | bytes) -> int:
     """Extract a token ID from a 32-byte topic."""
     if isinstance(topic, bytes):
@@ -224,8 +247,21 @@ async def scan_agent_nft_events(
     return all_logs
 
 
-async def _resolve_agent_wallets(session: AsyncSession) -> dict[str, str]:
-    """Build a mapping: lowercase wallet_address -> agent_id."""
+async def resolve_wallet_to_agent(session: AsyncSession) -> dict[str, str]:
+    """Public mapping ``canon(wallet) -> agent_id`` for every parsed wallet.
+
+    Replaces the private ``_resolve_agent_wallets`` so the backfill script
+    (``scripts/backfill_link_agents.py``) can import the same canonicalization
+    instead of duplicating it. Wallets whose canonicalization fails (None,
+    whitespace-only, non-hex, wrong length) are silently dropped — the dict
+    only contains matchable entries.
+
+    R-5 / R-6: when the sync worker has not populated agent_cache yet the
+    dict is empty and the indexer is a no-op for linking (transfers still
+    land, just with linked_agent_id NULL). When a wallet is added to
+    agent_cache between cycles, the next per-cycle refresh picks it up.
+    No code change required — the per-cycle callsite is the refresh.
+    """
     from app.db.models.agent import AgentCache
 
     result = await session.execute(
@@ -233,7 +269,22 @@ async def _resolve_agent_wallets(session: AsyncSession) -> dict[str, str]:
             AgentCache.agent_wallet.isnot(None)
         )
     )
-    return {row[0].lower(): row[1] for row in result.all()}
+    out: dict[str, str] = {}
+    for wallet, agent_id in result.all():
+        canon = _canon_addr(wallet)
+        if canon is not None:
+            out[canon] = agent_id
+    return out
+
+
+async def _resolve_agent_wallets(session: AsyncSession) -> dict[str, str]:
+    """Backward-compatible wrapper around :func:`resolve_wallet_to_agent`.
+
+    Kept as a private alias so the existing realtime / backfill cycle callsites
+    do not need to change. The body is intentionally identical to the public
+    helper — future drift would be a regression.
+    """
+    return await resolve_wallet_to_agent(session)
 
 
 async def _scan_and_store(
@@ -266,7 +317,7 @@ async def _scan_and_store(
 
         ts = ts_resolver(block_num)
 
-        linked_agent = wallet_to_agent.get(to_addr.lower())
+        linked_agent = wallet_to_agent.get(_canon_addr(to_addr))
 
         stmt = pg_insert(OnchainTransfer).values(
             from_address=from_addr,
@@ -378,7 +429,7 @@ async def _scan_and_store_direct(
                 block_num = int(log["blockNumber"], 16)
                 tx = log["transactionHash"]
                 ts = ts_resolver(block_num)
-                linked_agent = wallet_to_agent.get(to_addr.lower())
+                linked_agent = wallet_to_agent.get(_canon_addr(to_addr))
 
                 stmt = pg_insert(OnchainTransfer).values(
                     from_address=from_addr,
@@ -552,6 +603,7 @@ async def _backfill_cycle(client: MultiRPCClient) -> tuple[str, int]:
         to_block = min(from_block + BACKFILL_CHUNK_SIZE - 1, window_end)
 
         wallet_to_agent = await _resolve_agent_wallets(session)
+        # Refresh per cycle so newly-synced agents are picked up on the next pass.
         # BSC mainnet only — see the module contract constants.
         u_token = U_TOKEN_MAINNET
 
@@ -655,6 +707,7 @@ async def _realtime_cycle(client: MultiRPCClient) -> tuple[str, int]:
         to_block = min(current_block, from_block + REALTIME_CHUNK_SIZE - 1)
 
         wallet_to_agent = await _resolve_agent_wallets(session)
+        # Refresh per cycle so newly-synced agents are picked up on the next pass.
         # BSC mainnet only — see the module contract constants.
         u_token = U_TOKEN_MAINNET
 
