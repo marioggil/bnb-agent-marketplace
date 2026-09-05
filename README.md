@@ -120,20 +120,24 @@ Both services have healthchecks; `app` only starts once `db` reports healthy.
 │   ├── db/
 │   │   ├── session.py           # async engine + session factory
 │   │   ├── base.py
-│   │   └── models/              # 7 models: agent, auth_nonce, favorite,
-│   │                            #   hired_agent, onchain_index, sync_state, user
-│   ├── routers/                 # 10 routers: agents, auth, favorites, healthz,
-│   │                            #   hires, onchain_hires, onchain_stats, pages,
-│   │                            #   payments, sync
+│   │   └── models/              # all models in app/db/models/ (current audit):
+│   │                            #   agent, agent_feedback, agent_probe, auth_nonce,
+│   │                            #   favorite, flagged_address, hired_agent,
+│   │                            #   onchain_index, sync_state, user
+│   ├── routers/                 # all routers in app/routers/: agents, auth,
+│   │                            #   favorites, healthz, hires, onchain_hires,
+│   │                            #   onchain_stats, pages, payments, sync
 │   ├── schemas/                 # pydantic request/response models
-│   ├── services/                # 12 modules: 8004scan client, sync worker,
-│   │                            #   categories, auth, payment, agent_payments,
-│   │                            #   onchain_indexer, rpc_client, client_bscscan,
-│   │                            #   client_evoevo, client_mcp, client_termix
+│   ├── services/                # all services in app/services/ (current audit):
+│   │                            #   agent_payments, agent_score, auth, categories,
+│   │                            #   client_8004scan, client_bscscan, client_evoevo,
+│   │                            #   client_mcp, client_termix, feedback_sync,
+│   │                            #   flagged_sync, onchain_indexer, payment,
+│   │                            #   probe_worker, reclassify, rpc_client, sync_worker
 │   ├── templates/               # base.html + pages/* + partials/*
 │   ├── static/                  # css/, js/ (htmx, ethers, payment.js), img/
 │   └── worker/sync.py           # CLI: `python -m app.worker.sync`
-├── migrations/versions/         # 0001_initial … 0005_onchain_index
+├── migrations/versions/         # 0001_initial … 0011_fix_onchain_null_array
 ├── tests/                       # 20 test files + conftest.py + fixtures/
 ├── scripts/                     # dev tooling (see "Dev tooling" below)
 ├── index-blocks.html            # dev UI for the block-index webhook
@@ -195,6 +199,8 @@ the container: the workflow runs **every 12 minutes**, first `GET
 /api/sync/status` (with `X-API-Key`), and only if the sync is not already
 running it `POST`s an **incremental** run. There is no full run in the
 schedule; a full re-walk is available on demand via the CLI or the Sync API.
+Full re-walk is on-demand only — use `uv run python -m app.worker.sync --full`
+or `POST /api/sync` with `{"mode":"full"}` (requires `X-API-Key`).
 
 ```bash
 # incremental from the last checkpoint (default, batch 100)
@@ -471,6 +477,24 @@ The full list (grouped by concern) is:
 | `POSTGRES_USER` | `bnb` | docker-compose `db` user |
 | `POSTGRES_PASSWORD` | `change-me` | docker-compose `db` password |
 | `POSTGRES_DB` | `bnb_agent` | docker-compose `db` database name |
+
+---
+
+## Doc drift prevention
+
+This README describes deployed behaviour. Two rules keep it from going stale:
+
+1. **Same-commit doc rule** — Any PR that changes code behaviour that is
+   documented in this README MUST update the relevant README section in the
+   same commit. Docs and code must not drift across commits or branches.
+
+2. **Snippet audit rule** — Every shell/code block in this README MUST be
+   verified against the current codebase before the PR that touches it lands.
+   Copy-paste errors in env var names, endpoint paths, or CLI flags are the
+   most common source of misleading documentation.
+
+When in doubt, prefer "current" or "at time of writing" over hardcoded
+counts or specific wallet addresses.
 
 ---
 

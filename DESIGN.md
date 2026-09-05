@@ -281,7 +281,7 @@ All design decisions are resolved. Add new decisions here as the product evolves
 | D5 | **Brand color** | ✅ Mockup palette: teal `#14b8a6` primary, cyan `#38bdf8` secondary; BNB yellow kept only for BNB-linked elements |
 | D6 | **Home page scope** | ✅ Lightweight hero + category cards above the existing listing; stepper and full marketing layer are roadmap |
 | D7 | **Score model** | ✅ Both: Agent Execution Profile (objective metrics, base) + user ratings 1–5 (secondary); never as investment advice |
-| D8 | **Trust features** | ✅ T1 now: creator link + hires count (existing data). T2 wallet flags / on-chain proof, T3 recommendations — roadmap |
+| D8 | **Trust features** | ✅ T1 now: creator link + hires count (existing data). T2 wallet flags / on-chain proof, T3 recommendations — roadmap *(Note: T2 wallet flags shipped in commit 55318da; /flagged page exists; production sync pending as of this writing.)* |
 | D9 | **Display font** | ✅ System stack (no webfont); revisit only if the marketing layer lands |
 | D10 | **T1 trust signals implementation** | ✅ Creator link → `/?owner=<owner_address>` home filter; hires count = paid hires, distinct users; card markup unified in `agent_card_core.html` (design alignment, 2026-08) |
 | D11 | **Category taxonomy** | ✅ 10 categories + `other` accepted from `docs/category-study.md` (2026-08-26 — **source of truth** for the taxonomy). Signal priority: termix source category → offchain tags → x402 → skill/protocol hints → `other`. Hero renders all 10 cards (2×5 grid `≥1024px`, horizontal scroll below). Sync: `sdd/doc-refresh` |

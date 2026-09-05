@@ -1,0 +1,16 @@
+# OpenSpec project config — bnb-agent-marketplace
+schema: openspec/project@1
+version: "1"
+
+project:
+  name: bnb-agent-marketplace
+  root: /home/mario/Documentos/Bnb_agent
+
+defaults:
+  artifact_store: openspec
+  execution_mode: auto
+  delivery_strategy: ask-on-risk
+  review_budget: 400
+  planning_home: /home/mario/Documentos/Bnb_agent/openspec
+
+changes_base: openspec/changes
