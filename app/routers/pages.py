@@ -413,14 +413,14 @@ def _platform_expression(platform: str, dialect: str = "postgresql") -> Any:
         false(),
     )
     if dialect == "postgresql":
-        # EXISTS (SELECT 1 FROM jsonb_array_elements(raw_metadata->'onchain')
-        #   AS oe WHERE oe->>'key'='platform' AND oe->>'value'=:hex)
-        # Uses ->> (works on all Postgres 9.4+) instead of jsonb_path_query_first
-        # which may not be available on older versions.
+        # JSONB containment (`@>`) instead of jsonb_array_elements. Robust
+        # to rows where raw_metadata.onchain is a scalar (data drift in
+        # older sync versions) — `@>` returns NULL instead of raising
+        # "cannot extract elements from a scalar". Migration 0010
+        # backfills the data so onchain is always an array.
         evo = text(
-            "EXISTS (SELECT 1 FROM jsonb_array_elements(agent_cache.raw_metadata"
-            "->'onchain') AS oe WHERE oe->>'key' = 'platform'"
-            " AND oe->>'value' = :hex)"
+            "(agent_cache.raw_metadata->'onchain') @> "
+            "jsonb_build_array(jsonb_build_object('key', 'platform', 'value', :hex))"
         ).bindparams(hex=_EVOEVO_PLATFORM_HEX)
     else:
         # sqlite test harness: no jsonb_array_elements; approximate match.
