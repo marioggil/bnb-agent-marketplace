@@ -233,8 +233,9 @@ _DESCRIPTION_HINTS: Final[dict[str, tuple[str, ...]]] = {
         "task management",
         "community management",
     ),
-    "grid_trading": ("trading bot", "arbitrage", "grid trading", "dca bot", "scalping"),
-    "yield_optimisation": ("yield", "staking", "liquidity farming", "defi vault"),
+    "grid_trading": ("trading bot", "arbitrage", "grid trading", "dca bot", "scalping",
+                      "trading agent", "ai trading", "mev", "dex", "swap bot", "copy trading"),
+    "yield_optimisation": ("yield", "staking", "liquidity farming", "defi vault", "liquidity pool"),
     "rebalancing": ("rebalanc", "portfolio management"),
     "health_factor_monitoring": ("liquidation", "health factor", "collateral monitoring"),
 }

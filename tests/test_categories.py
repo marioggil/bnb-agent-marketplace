@@ -80,6 +80,23 @@ def test_description_hint_is_case_insensitive() -> None:
     )
 
 
+def test_description_hint_trading_agent() -> None:
+    # Ave.ai / MevX agents — no tags, no protocols, trading in description
+    assert (
+        compute_category(
+            None, [], [], False,
+            "AI-driven multi-chain trading agent with on-chain reputation.",
+        )
+        == "grid_trading"
+    )
+    assert (
+        compute_category(
+            None, [], [], False, "Next-gen AI trading agent powered by MevX.io"
+        )
+        == "grid_trading"
+    )
+
+
 def test_description_without_hints_falls_to_other() -> None:
     assert compute_category(None, [], [], True, "A generic autonomous system") == "other"
 
