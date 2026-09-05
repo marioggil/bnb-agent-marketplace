@@ -587,7 +587,11 @@
             data-csrf="{{ csrf_token() if csrf_token is defined else '' }}">
       Hire for ${{ '%.2f'|format(hire_price_usd) }}
     </button>
-    <p class="hint">This agent cannot be hired — no payment wallet (payTo) is registered.</p>
+    {% if profile.wallet %}
+    <p class="hint">This agent is not x402-supported &mdash; the marketplace cannot process the hire payment.</p>
+    {% else %}
+    <p class="hint">This agent cannot be hired &mdash; no payment wallet (payTo) is registered.</p>
+    {% endif %}
     {% endif %}
     <div id="hire-status" class="is-idle" data-state="idle" role="status" aria-live="polite">
       <span class="status-idle">Not started.</span>
