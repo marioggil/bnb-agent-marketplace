@@ -523,6 +523,35 @@ def _build_agent_profile(agent: Any) -> dict[str, Any]:
             if svc_name in ("twitter", "telegram", "email", "web") and svc_endpoint:
                 social_links[svc_name] = svc_endpoint
 
+    # R3-bis (EIP-8004 spec read 2026-09): `services.web` is defined by the
+    # protocol as "the agent's web page" — the canonical user-facing URL. Only
+    # expose when http(s); non-http endpoints aren't navigable.
+    _web_svc = services.get("web") if isinstance(services.get("web"), dict) else None
+    _web_endpoint = _web_svc.get("endpoint") if isinstance(_web_svc, dict) else None
+    external_web_url: str | None = (
+        _web_endpoint
+        if isinstance(_web_endpoint, str) and re.match(r"^https?://", _web_endpoint)
+        else None
+    )
+
+    # R3-bis (EIP-8004 spec): the `description` field MAY contain "pricing,
+    # and interaction methods" per the spec. Extract any URLs the agent itself
+    # declared so the UI can surface them — without inventing any. Strip the
+    # canonical web endpoint to avoid duplicates and cap at 3 to keep the
+    # panel readable.
+    description_urls: list[str] = []
+    _description_text = agent.description if isinstance(agent.description, str) else ""
+    if _description_text:
+        _seen: set[str] = set()
+        for _url in re.findall(r"https?://[^\s\)\]\>]+", _description_text):
+            _url = _url.rstrip(".,;:!?")
+            if not _url or _url in _seen or _url == external_web_url:
+                continue
+            _seen.add(_url)
+            description_urls.append(_url)
+            if len(description_urls) >= 3:
+                break
+
     return {
         "platform": platform,
         "termix_category": (termix.get("profile") or {}).get("category"),
@@ -531,6 +560,19 @@ def _build_agent_profile(agent: Any) -> dict[str, Any]:
         "a2a_version": a2a.get("version"),
         "a2a_skills": a2a.get("skills") or [],
         "built_with": _hex_to_text(_onchain_value(agent, "built_with")),
+        # TODO(bnb_agent/hire-discovery-gap): `hireable` only checks x402 + wallet.
+        # For external-platform agents (e.g. 117823/Singularry), x402_supported is
+        # false AND agent.agent_url is null, so:
+        #   1. the in-marketplace hire flow (/api/hires) cannot fire, AND
+        #   2. payment.js W3 redirect (data-agent-url check) never fires either,
+        #      leaving a dead-end after "Paid — redirecting…".
+        # Decision (R3, 2026-09): wait for upstream 8004scan to populate
+        # `agent_url`. R1 (template-only disclosure) and R2 (whitelisted
+        # external_platforms derivation) are documented as fallback paths.
+        # Sampled 6 agents across 8 8004scan pages: agent_url was null in 6/6.
+        # Only 117823 exposes a derivable user-facing URL (host of
+        # services.mcp.endpoint == app.singularry.org) — outlier, not pattern.
+        # Full context: Engram observation 275 (bnb_agent/hire-discovery-gap).
         "hireable": bool(agent.x402_supported and agent.agent_wallet),
         "wallet": agent.agent_wallet,
         "health_score": agent.health_score,
@@ -570,6 +612,18 @@ def _build_agent_profile(agent: Any) -> dict[str, Any]:
         "documentation_url": off.get("documentationUrl"),
         # Protocol info
         "protocol_version": off.get("protocolVersion"),
+        # R3-bis (EIP-8004) — see TODO above at the `hireable` line.
+        "external_web_url": external_web_url,
+        "description_urls": description_urls,
+        # TermiX platform link: www.agent.family uses our token_id as the
+        # URL slug (verified HTTP 200 for token_id=334666). Only set when
+        # the agent is on TermiX (platform == "Termix" derived from
+        # offchain_content.termix in `_build_agent_profile`).
+        "termix_agent_url": (
+            f"https://www.agent.family/agents/{agent.token_id}"
+            if platform == "Termix" and agent.token_id is not None
+            else None
+        ),
     }
 
 

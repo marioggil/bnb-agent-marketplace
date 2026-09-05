@@ -14,6 +14,12 @@
     {% if agent.is_verified %}<span class="badge verified" title="Verified on-chain agent">&#10003; verified</span>{% endif %}
   </p>
   <p class="agent-detail-description">{{ agent.description or 'No description.' }}</p>
+  {% if profile.description_urls %}
+  <p class="agent-detail-links">
+    Mentioned by agent:
+    {% for url in profile.description_urls %}<a href="{{ url }}" target="_blank" rel="noopener">{{ url }}</a>{% if not loop.last %} &middot; {% endif %}{% endfor %}
+  </p>
+  {% endif %}
   <dl>
     <dt>Agent ID</dt><dd>{{ agent.agent_id }}</dd>
     <dt>Owner</dt>
@@ -84,9 +90,13 @@
         </dd>
       {% endif %}
       <dt>Services</dt>
-      <dd>
-        {% if profile.a2a_endpoint %}
-          A2A v{{ profile.a2a_version or '?' }} &mdash; <code>{{ profile.a2a_endpoint }}</code>
+      <dd class="services-list">
+        {% if agent.services %}
+          {% for svc_name, svc_obj in agent.services.items() %}
+            {% if svc_obj and svc_obj.endpoint and (svc_obj.endpoint.startswith('http://') or svc_obj.endpoint.startswith('https://')) %}
+              {% if not loop.first %} &middot; {% endif %}<a href="{{ svc_obj.endpoint }}" target="_blank" rel="noopener" class="service-link service-{{ svc_name | lower }}">{{ svc_name }}{% if svc_obj.version %} v{{ svc_obj.version }}{% endif %}</a>
+            {% endif %}
+          {% endfor %}
         {% else %}
           Web
         {% endif %}
@@ -241,6 +251,9 @@
   {% if termix_card %}
   <section class="agent-profile termix-card">
     <h2>Termix live data</h2>
+    {% if profile.termix_agent_url %}
+    <p><a href="{{ profile.termix_agent_url }}" target="_blank" rel="noopener">View on TermiX &rarr;</a></p>
+    {% endif %}
     <dl>
       {% if termix_card.get('card', {}).get('profile', {}).get('displayName') %}
         <dt>Display name</dt><dd>{{ termix_card.card.profile.displayName }}</dd>
@@ -552,13 +565,19 @@
     {% if hire_fee_usd %}
     <p class="hint">Includes ${{ '%.2f'|format(hire_fee_usd) }} marketplace fee.</p>
     {% endif %}
-    {% if pay_to %}
+    {% if profile.hireable %}
     <button id="hire-cta" type="button" class="btn btn-primary"
             data-agent-id="{{ agent.agent_id }}"
             data-agent-url="{{ agent.agent_url or '' }}"
             data-csrf="{{ csrf_token() if csrf_token is defined else '' }}">
       Hire {% if my_paid_count %}again {% endif %}for ${{ '%.2f'|format(hire_price_usd) }}
     </button>
+    {% elif profile.external_web_url %}
+    <a href="{{ profile.external_web_url }}" target="_blank" rel="noopener"
+       class="btn btn-primary" data-agent-id="{{ agent.agent_id }}">
+      Open agent website &rarr;
+    </a>
+    <p class="hint">This agent operates on its own platform &mdash; hiring happens on the agent's website.</p>
     {% else %}
     <button id="hire-cta" type="button" class="btn btn-primary" disabled
             data-agent-id="{{ agent.agent_id }}"
