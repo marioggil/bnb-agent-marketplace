@@ -14,14 +14,14 @@ row has a consistent array shape — defensive even after the SQL is
 rewritten to use the `@>` containment operator (which tolerates the
 inconsistent shape, but the marketplace shouldn't carry it forever).
 
-Revision ID: 0010_normalize_raw_metadata_onchain
+Revision ID: 0010_onchain_array
 Revises: 0009_category_drop_x402_default
 Create Date: 2026-09-05
 """
 from alembic import op
 
 
-revision = "0010_normalize_raw_metadata_onchain"
+revision = "0010_onchain_array"
 down_revision = "0009_category_drop_x402_default"
 branch_labels = None
 depends_on = None
