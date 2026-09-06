@@ -275,7 +275,7 @@ All design decisions are resolved. Add new decisions here as the product evolves
 | # | Decision | Resolution |
 |---|---|---|
 | D1 | **Product name** | ✅ "BNB Agent Marketplace" (current brand `bnb_agent`) |
-| D2 | **Logo** | 🔶 In progress — team has an idea to develop; never the BNB logo; placeholder until created |
+| D2 | **Logo** | ✅ Adopted: crystal diamond with stylized "A" — teal/cyan/BNB yellow on dark navy (commit logo-v2) |
 | D3 | **UI language** | ✅ English — everything (UI, marketing, docs) |
 | D4 | **Theme** | ✅ Dark theme (mockup direction) is the design basis; light is legacy until migration |
 | D5 | **Brand color** | ✅ Mockup palette: teal `#14b8a6` primary, cyan `#38bdf8` secondary; BNB yellow kept only for BNB-linked elements |

@@ -136,6 +136,13 @@ header .brand {
   text-decoration: none;
 }
 
+/* When the brand slot carries an image instead of text. */
+header .brand-img img {
+  height: 36px;
+  width: auto;
+  display: block;
+}
+
 header nav {
   display: flex;
   align-items: center;
