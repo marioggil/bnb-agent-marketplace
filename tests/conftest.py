@@ -287,6 +287,34 @@ async def _create_schema():
 
 
 @pytest.fixture(autouse=True)
+async def _ensure_compliance_schema():
+    """Pre-seed `agent_compliance_flags` table + `agent_cache.compliance_penalty` column."""
+    from sqlalchemy import text
+    async with _TEST_ENGINE.begin() as conn:
+        await conn.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS agent_compliance_flags ("
+                "  agent_id VARCHAR(255) PRIMARY KEY, "
+                "  creator_flagged BOOLEAN NOT NULL DEFAULT 0, "
+                "  creator_flag_sources JSON NOT NULL DEFAULT '[]', "
+                "  owner_flagged BOOLEAN NOT NULL DEFAULT 0, "
+                "  owner_flag_sources JSON NOT NULL DEFAULT '[]', "
+                "  creator_is_owner BOOLEAN NOT NULL DEFAULT 0, "
+                "  flagged_data_stale BOOLEAN NOT NULL DEFAULT 0, "
+                "  refreshed_at DATETIME NOT NULL"
+                ")"
+            )
+        )
+        try:
+            await conn.execute(text(
+                "ALTER TABLE agent_cache ADD COLUMN compliance_penalty NUMERIC(5,2) NOT NULL DEFAULT 0"
+            ))
+        except Exception:
+            pass
+    yield
+
+
+@pytest.fixture(autouse=True)
 async def _truncate_tables():
     yield
     async with _TEST_ENGINE.begin() as conn:

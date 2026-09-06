@@ -104,7 +104,13 @@ def test_agent_compliance_flag_has_all_required_columns() -> None:
 
     # refreshed_at is a datetime and NOT NULL.
     refreshed = columns["refreshed_at"]
-    assert isinstance(refreshed.type, DateTime)
+    # SQLAlchemy wraps DateTime(timezone=True) in a _UtcAwareDateTime TypeDecorator,
+    # whose impl is a DateTime instance. Use that as the contract instead of
+    # isinstance on the public type.
+    inner_impl = getattr(refreshed.type, "impl", None)
+    assert isinstance(inner_impl, DateTime), (
+        f"refreshed_at: expected DateTime(timezone=True) decorator wrapping DateTime, got {refreshed.type!r}"
+    )
     assert refreshed.nullable is False
 
 

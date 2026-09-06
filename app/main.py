@@ -31,6 +31,7 @@ from app.routers import (
     payments,
     sync,
 )
+from app.routers.admin import router as admin_router
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,7 @@ def create_app() -> FastAPI:
     app.include_router(pages.router)
     app.include_router(payments.router)
     app.include_router(sync.router)
+    app.include_router(admin_router)
     # Error handlers.
     register_error_handlers(app)
     return app
