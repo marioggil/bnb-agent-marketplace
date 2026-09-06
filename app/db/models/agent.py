@@ -199,6 +199,17 @@ class AgentCache(Base):
     metadata_completeness_score: Mapped[Decimal | None] = mapped_column(
         Numeric(5, 2), nullable=True
     )
+    # Compliance penalty — OFAC-derived display-side adjustment (Phase 1a-i,
+    # `openspec/changes/compliance-flags/spec.md` AC-1). 30 points per flag,
+    # capped at 50. `server_default=text("0")` mirrors the migration so
+    # existing rows backfill to 0.00; the floor is enforced by the
+    # `compliance_penalty_nonneg` CheckConstraint below.
+    compliance_penalty: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2),
+        nullable=False,
+        server_default=text("0"),
+        default=Decimal("0"),
+    )
 
     # ------------------------------------------------------------------
     # Supplementary identity
@@ -302,6 +313,13 @@ class AgentCache(Base):
         CheckConstraint(
             "average_score IS NULL OR (average_score >= 0 AND average_score <= 100)",
             name="agent_cache_score_range",
+        ),
+        # Compliance penalty floor (Phase 1a-i) — the migration adds the
+        # CHECK at the DB layer too; keeping it here lets SQLAlchemy emit
+        # it on `create_all` for sqlite test DBs without running alembic.
+        CheckConstraint(
+            "compliance_penalty >= 0",
+            name="compliance_penalty_nonneg",
         ),
     )
 
