@@ -63,6 +63,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # (app/ does not exist yet at PR-A; PR-B/C will add the modules referenced
 # by the CMD below. The image will start successfully once PR-C lands.)
 COPY app ./app
+COPY scripts ./scripts
 
 # ---------- runtime ---------------------------------------------------------
 FROM python:${PYTHON_VERSION}-slim AS runtime
@@ -97,6 +98,7 @@ COPY --from=builder --chown=${APP_USER}:${APP_USER} /root/.local /home/${APP_USE
 
 # Copy application source.
 COPY --from=builder --chown=${APP_USER}:${APP_USER} /build/app ./app
+COPY --from=builder --chown=${APP_USER}:${APP_USER} /build/scripts ./scripts
 # Alembic config + migrations. The container's entrypoint runs
 # `alembic upgrade head` before uvicorn, so both must be present in the
 # working directory (`/home/${APP_USER}/app`) alongside `alembic.ini`,
