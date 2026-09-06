@@ -1,18 +1,226 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:1afdd64fa18bc43004d08bda1db2b15e7bc0456754c8de152ed579de0e5d56be
+evidence_revision: sha256:727873950a8a3925b0d5339c4125c6a5f9850bc4f58e4402dcf1a92f0290ab25
 verdict: pass
 blockers: 0
 critical_findings: 0
-requirements: 8/8
-scenarios: 23/23
-test_command: uv run pytest tests/test_compliance_refresh.py tests/test_admin_compliance.py tests/test_admin_compliance_refresh.py -v
+requirements: 11/11
+scenarios: 32/32
+test_command: uv run pytest tests/test_pages.py tests/test_compliance_api.py -v -p no:cacheprovider
 test_exit_code: 0
-test_output_hash: sha256:08ca52cd5308b300b68f720dd35d3964bc953a52592a35ef5e77dbec017d01e8
+test_output_hash: sha256:f034774065990b270557750c68c6261092a82452c4fbd855929912d525c649f3
 build_command: uv run alembic upgrade head --sql
 build_exit_code: 0
-build_output_hash: sha256:d2745cbcbf02eb263d33f5a27e0abc31bef70afe5fa7c8f166b2f66c8074088d
+build_output_hash: sha256:4038b617c83f389295f4540482f5ec38c00aaf1b4e60308b3e4476c86f902274
 ```
+
+
+---
+
+**Branch:** `feat/compliance-flags-ui`
+**Scope:** UI Hire-CTA gate + OFAC banner + Compliance badge on `agent_detail.html`; additive `compliance_penalty` + `displayed_activity_score` fields on `ScoreOut`; `agent_detail` route reads `agent_compliance_flags` row; shared `tests/_compliance_fixtures.py` seed; 6 new API tests + 2 new page tests.
+**Verdict:** **PASS** — all 10 applicable ACs satisfied (AC-1, AC-2, AC-3, AC-4, AC-7, AC-8, AC-9, AC-10 re-confirmed without regression; **AC-5 + AC-6 NEW for 1b**, each with 3 scenarios verified by direct test).
+
+---
+
+## AC summary
+
+| AC | Status | Evidence |
+|---|---|---|
+| **AC-1** — `agent_cache.compliance_penalty` column exists | **pass (re-confirm)** | 1a-i tests still green; no schema drift in `git diff -- app/db/models/` (0 lines) |
+| **AC-2** — `agent_compliance_flags` table exists | **pass (re-confirm)** | 1a-i + 1a-ii tests still green; no drift |
+| **AC-3** — Orchestrator chains both phases | **pass (re-confirm)** | `tests/test_compliance_refresh.py` 16/16 still green; no regressions |
+| **AC-4** — Penalty math correct | **pass (re-confirm)** | `tests/test_compliance_penalty.py` 9/9 still green |
+| **AC-5 — Hire CTA disabled iff both flags set** | **pass (NEW)** | `test_agent_detail_hire_cta_disabled_when_both_compliance_flags_set` + `..._enabled_when_only_one_flag_set` + existing `test_agent_detail_renders_hire_panel` (clean agent implicit). Template renders `disabled aria-disabled="true"` only when both flags are true; single-flag renders warning copy only; clean agent renders neither |
+| **AC-6 — Displayed score formula correct** | **pass (NEW)** | `test_displayed_activity_score_subtracts_penalty` (30 subtracted → 42.50) + `test_score_endpoint_clip_to_zero_when_penalty_exceeds_activity` (clip-to-zero) + `test_score_endpoint_clean_agent_zero_penalty` (displayed==stored). Template renders `{{ displayed_activity_score or 'n/a' }}/100` + `⚠ Compliance: −{{ '%.2f'|format(compliance_penalty) }} pts` badge |
+| **AC-7** — Case-insensitive exact match | **pass (re-confirm)** | 1a-ii tests still green; no regressions |
+| **AC-8** — `flagged_data_stale()` derives from mirror freshness | **pass (re-confirm)** | 1a-ii tests still green; no regressions |
+| **AC-9** — Targeted suite green; full baseline preserved | **pass (re-confirm)** | **348 passed, 8 skipped, 0 failed** (was 340 → 348, Δ +8 from 1b tests); same 8 pre-existing Postgres-only skips |
+| **AC-10** — Admin endpoints use `X-API-Key` | **pass (re-confirm)** | 1a-ii tests still green; no regressions |
+
+**Pass: 10 · Fail: 0 · N/A: 0.** All 10 ACs applicable per Phase 1b scope.
+
+---
+
+## Spec scenario coverage
+
+All 11 spec Requirements are applicable (column, table, penalty, orchestrator, case-insensitive, hire-CTA gate, displayed-score, stale, admin-auth, score-endpoint, strict-TDD). All 32 spec Scenarios are covered (3+3+3+3+2+3+3+3+5+2+2).
+
+| Req | Scenarios | Verified in 1b |
+|---|---|---|
+| 1 — column | 3 (exists / backfill / negative-reject) | ✅ 1a-i tests still green; no schema drift |
+| 2 — table | 3 (refresh writes row / creator=owner / clean agent) | ✅ 1a-i + 1a-ii tests still green |
+| 3 — penalty math | 3 (truth table / cap / deterministic) | ✅ 1a-i tests still green |
+| 4 — orchestrator | 3 (chain / short-circuit / idempotent) | ✅ 1a-ii tests still green |
+| 5 — case-insensitive | 2 (mixed-case / one-char diff) | ✅ 1a-ii tests still green |
+| 6 — Hire-CTA gate | 3 (dual-flag / single-flag / no-flag) | ✅ **NEW 1b**: dual-flag (both render `disabled aria-disabled="true"` + block banner), single-flag (warning copy, no `disabled`), no-flag (clean path) |
+| 7 — Displayed score | 3 (penalty<activity / penalty>activity / clean agent) | ✅ **NEW 1b**: 72.50-30.00=42.50; 20.00-30.00 clips to 0.0; clean 85.00 displayed==stored |
+| 8 — stale flag | 3 (fresh / backdated / empty) | ✅ 1a-ii tests still green |
+| 9 — admin auth | 5 (missing/wrong/unconfigured × refresh+status) | ✅ 1a-ii tests still green |
+| 10 — Score endpoint | 2 (additive fields / existing clients) | ✅ **NEW 1b**: `compliance_penalty` + `displayed_activity_score` present in JSON; `AgentOut` boundary pinned via `test_agent_out_does_not_expose_compliance_penalty` |
+| 11 — Strict TDD | 2 (RED→GREEN / full baseline) | ✅ RED→GREEN TDD cycle per `apply-progress.md` TDD Cycle Evidence table; baseline 348 passed |
+
+**Direct coverage: 32 / 32 applicable scenarios.**
+
+---
+
+## Test execution
+
+### Targeted 1b suite
+
+```
+$ rm -f /tmp/bnb_agent_test.sqlite3* && uv run pytest tests/test_pages.py tests/test_compliance_api.py -v -p no:cacheprovider
+...
+tests/test_pages.py::test_agent_detail_hire_cta_disabled_when_both_compliance_flags_set PASSED [ 81%]
+tests/test_pages.py::test_agent_detail_hire_cta_enabled_when_only_one_flag_set PASSED [ 83%]
+tests/test_compliance_api.py::test_score_endpoint_includes_compliance_penalty PASSED [ 86%]
+tests/test_compliance_api.py::test_displayed_activity_score_subtracts_penalty PASSED [ 89%]
+tests/test_compliance_api.py::test_score_endpoint_clip_to_zero_when_penalty_exceeds_activity PASSED [ 91%]
+tests/test_compliance_api.py::test_score_endpoint_clean_agent_zero_penalty PASSED [ 94%]
+tests/test_compliance_api.py::test_agent_out_does_not_expose_compliance_penalty PASSED [ 97%]
+tests/test_compliance_api.py::test_agent_detail_compliance_badge_renders_with_negative_value PASSED [100%]
+============================= 37 passed in 2.26s =============================
+```
+
+Exit code: **0**. 37 passed, 0 failed (8 new 1b tests + 29 prior tests in those files).
+
+### Full baseline
+
+```
+$ rm -f /tmp/bnb_agent_test.sqlite3* && uv run pytest -p no:cacheprovider
+...
+======================= 348 passed, 8 skipped in 15.33s ========================
+```
+
+Exit code: **0**. **Baseline preserved.** Pre-1b baseline was `340 passed, 8 skipped`; Δ = **+8 new passes**, **0 regressions**. The 8 skipped are the same pre-existing Postgres-only tests — none added, none removed.
+
+> **Test environment note (informational, not a blocker):** the conftest uses a fixed-path sqlite file at `/tmp/bnb_agent_test.sqlite3`. Stale state from prior test runs can leave the file in a write-locked state ("attempt to write a readonly database") until it is wiped. The session-scoped `_create_schema` fixture removes the file at session start, but if pytest is interrupted mid-run or the dispose step is skipped, the next run may see leftover journal state. **Workaround:** `rm -f /tmp/bnb_agent_test.sqlite3*` before invoking pytest, exactly as the apply-progress §T10 verification did. This is environmental, not a code defect; CI on Postgres is unaffected.
+
+> **Spec wording note (carried forward from 1a-i / 1a-ii):** spec AC-9 cites the baseline as `285 passed, 8 skipped`. The actual pre-1b baseline is `340 passed, 8 skipped` (post-1a-ii); pre-1a-ii was `315` (post-1a-i); pre-1a-i was `297`. The implementation satisfies the spirit of AC-9 (no regression, +8 new passes). Recommend the orchestrator reconcile the spec's `285` → `348` on archive.
+
+### Live ORM introspections
+
+```
+$ uv run python -c "from app.schemas.score import ScoreOut; fields = list(ScoreOut.model_fields.keys()); print('compliance_penalty' in fields, 'displayed_activity_score' in fields, fields)"
+True True ['chain', 'token', 'activity_score', 'compliance_penalty', 'displayed_activity_score', 'pillars', 'breakdown']
+
+$ grep -n "OFAC: hiring blocked" app/templates/pages/agent_detail.html
+583:    <p class="ofac-block" role="alert">OFAC: hiring blocked — Hiring is disabled while OFAC compliance is unresolved for this agent.</p>
+
+$ grep -n "aria-disabled" app/templates/pages/agent_detail.html
+589:    <button id="hire-cta" type="button" class="btn btn-primary"{% if both_flags %} disabled aria-disabled="true"{% endif %}
+
+$ grep -n "Compliance: −" app/templates/pages/agent_detail.html
+181:    <span class="badge risk">⚠ Compliance: −{{ '%.2f'|format(compliance_penalty) }} pts</span>
+```
+
+### Scope guard (forbidden surfaces must show no diff)
+
+```
+$ git diff -- app/static/js/payment.js           | wc -l   # 0 (byte-identical)
+$ git diff -- app/services/flagged_sync.py       | wc -l   # 0
+$ git diff -- app/services/agent_score.py        | wc -l   # 0
+$ git diff -- app/services/compliance_refresh.py | wc -l   # 0 (compute_penalty untouched)
+$ git diff -- migrations/                        | wc -l   # 0 (1a-i owns)
+$ git diff -- app/db/models/                     | wc -l   # 0 (1a-i owns)
+$ git diff -- app/routers/admin.py               | wc -l   # 0 (1a-ii owns)
+$ git diff -- app/main.py                        | wc -l   # 0 (1a-ii owns)
+```
+
+The Phase 1b file surface (vs `feat/compliance-flags-db-service` head):
+
+```
+ M app/routers/agents.py                         (+12 — ScoreOut fields populate)
+ M app/routers/pages.py                          (+50 — agent_compliance_flags read + context pass-through)
+ M app/schemas/score.py                          (+9  — additive ScoreOut fields)
+ M app/templates/pages/agent_detail.html         (+19/-2 — OFAC banner + CTA gate + badge)
+ M tests/test_pages.py                           (+125 — two new compliance tests)
+?? tests/_compliance_fixtures.py                 (new, 171 lines)
+?? tests/test_compliance_api.py                  (new, 253 lines)
+```
+
+No file under the forbidden surfaces was modified. **Scope guard: ✅.**
+
+---
+
+## Strict TDD compliance
+
+| Check | Result | Details |
+|---|---|---|
+| TDD evidence reported | ✅ | `apply-progress.md` Phase 1b section contains a `## TDD Cycle Evidence` table with all 10 tasks |
+| All tasks have tests | ✅ | 10/10 tasks (T1–T10) have test execution evidence in apply-progress |
+| RED confirmed (tests exist) | ✅ | T1: `AssertionError: ScoreOut must expose ... Got keys: ['activity_score', 'breakdown', 'chain', 'pillars', 'token']`; T3: `displayed_activity_score` is `0.0` from default; T5: `#hire-cta` lacks `disabled`; T7: warning copy absent |
+| GREEN confirmed (tests pass) | ✅ | T2 partial-GREEN (schema field), T4 GREEN (route populate), T6 partial-GREEN (context), T8 GREEN (template render), T9 GREEN (20/20 triangulation), T10 GREEN (full suite 348 passed) |
+| Triangulation adequate | ✅ | T9 adds 4 cases (clip-to-zero, clean-agent, AgentOut boundary, badge substring with negative value); combined with T1, T3, T5, T7 the 1b suite covers 8 distinct scenarios |
+| Safety net for modified files | ✅ | `_truncate_tables` autouse + `_ensure_compliance_schema` autouse keep the sqlite test DB clean per-test; pre-1b baseline 340 → post-1b 348 = +8 new passes, 0 regressions |
+| Strict TDD's `filterwarnings = ["error", ...]` | ✅ | `_compliance_fixtures.py::seed_compliance_agent` uses `bindparam(type_=DateTime(timezone=True))` to route tz-aware datetimes through SQLAlchemy's adapter (R-3 from apply-progress) |
+| TDD style matches prior phases | ✅ | RED → GREEN → TRIANGULATE → REFACTOR per-task narrative matches 1a-i + 1a-ii precedent |
+
+**TDD compliance: 8/8.**
+
+---
+
+## Assertion quality audit
+
+Reviewed every assertion in `tests/test_compliance_api.py`, `tests/_compliance_fixtures.py`, and the 1b extension of `tests/test_pages.py`:
+
+- No tautologies. The two 1b `test_pages.py` additions each have ≥3 behavioral assertions (block-banner copy + opening-tag isolated `disabled` substring + opening-tag isolated `aria-disabled="true"` substring).
+- No ghost loops. The 6 `test_compliance_api.py` cases each seed one agent and assert against the rendered/served response.
+- No type-only assertions alone. Every value check is paired with a literal-value assertion (`42.5`, `30.0`, `"42.50"`, `"Compliance: −30.00 pts"`).
+- No smoke-only render checks. Each test asserts WHAT was rendered (specific banner substring, specific badge substring, specific opening-tag attributes), not just that the page rendered.
+- No implementation-detail CSS coupling beyond the spec-mandated `.badge.risk` class (already styled for OFAC owner/payment wallet markers; reused per design §4.2 "do not introduce new CSS").
+- No mock-heavy tests. The new tests use the real `TestClient` + aiosqlite test fixture (`tests/_compliance_fixtures.py::seed_compliance_agent`); no `unittest.mock` invocations.
+- `tests/_compliance_fixtures.py::seed_compliance_agent` uses `INSERT ... ON CONFLICT DO UPDATE` (idempotent) — same DB shape as production UPSERT, supported by both sqlite + postgres. No migration drift.
+- The 1a-i tautology WARNING in `test_compute_penalty_deterministic` was **not** touched in 1b (out-of-scope edit, carried forward).
+
+**Assertion quality: 0 CRITICAL, 0 WARNING.** 
+
+---
+
+## Review-workload verification
+
+| Forecast (`tasks-1b.md`) | Implemented | Match? |
+|---|---|---|
+| Sub-PR scope = UI + additive API fields | ✅ no schema migration, no orchestrator, no admin router | yes |
+| Estimated ~156 lines | **~637 cumulative** (~90 production + ~547 tests/helper) | ⚠️ **size:exception recommended** (per-file ≤ 130 net additions, well under 400-line budget) |
+| Chained PRs recommended = Yes (3rd of 3 — final slice) | ✅ 1b only; no out-of-scope edits | yes |
+| No scope creep into forbidden surfaces | ✅ no diff in `payment.js`, `flagged_sync.py`, `agent_score.py`, `compliance_refresh.py`, `migrations/`, `app/db/models/`, `app/routers/admin.py`, `app/main.py` | yes |
+| Stack order: 1a-i → 1a-ii → 1b | ✅ 1a-i + 1a-ii merged; 1b rebased on top | yes |
+| Refactor notes (`_seed_compliance_agent` in shared helper; single-row SELECT; reuse `.badge.risk`) | ✅ `tests/_compliance_fixtures.py::seed_compliance_agent` shared; `pages.py::agent_detail` does one `select(AgentComplianceFlag).where(...)`; `.badge.risk` class reused | yes |
+
+The cumulative figure includes the 253-line `test_compliance_api.py` (8 distinct scenarios), the 171-line `_compliance_fixtures.py` (idempotent UPSERT helper), and the 125-line `test_pages.py` extension (2 scenarios + helper re-imports). Production code is ~90 lines (well under the 156-line design estimate). apply-progress R-1 records the size:exception rationale; verifier concurs.
+
+---
+
+## Findings
+
+- **No blockers. No critical defects.**
+- **Phase 1b's two NEW ACs are fully verified:**
+  - AC-5 (Hire CTA gate): both dual-flag + single-flag + clean-agent scenarios exercised; the spec's `disabled aria-disabled="true"` substring is pinned to the opening `<button>` tag (not just "somewhere on the page").
+  - AC-6 (Displayed score formula): three scenarios — penalty<activity (30 sub from 72.50 → 42.50), penalty>activity (clip to 0.0), clean agent (displayed==stored) — plus the page-side `Compliance: −30.00 pts` badge assertion.
+- **No regressions in 1a-i + 1a-ii surface:** all 9 + 25 = 34 prior compliance tests still pass; forbidden surfaces (`payment.js`, `flagged_sync.py`, `agent_score.py`, `compliance_refresh.py`, `migrations/`, `app/db/models/`, `app/routers/admin.py`, `app/main.py`) byte-identical.
+- **Informational (carried forward):** spec AC-9 baseline `285` should be reconciled to `348` on archive. The implementation satisfies the spirit (no regression, +8 new passes).
+- **Pattern worth highlighting:** the `AgentOut` boundary contract (`test_agent_out_does_not_expose_compliance_penalty`) is the cheapest place to pin the additive scope of `ScoreOut`. Without it, a future contributor could "for free" widen `AgentOut` to include the column — a leak the spec's R4 explicitly forbids. The paired assertion (`/score` has it, `/agents/{chain}/{token}` does not) makes the contract self-documenting.
+- **Operational:** the server-side `disabled` rendering on `#hire-cta` is the load-bearing piece; `payment.js` already short-circuits on `cta.disabled`, so no client-side change is required. design §5.2 N+1 invariant is honoured (single-row `select(AgentComplianceFlag)` per agent detail render).
+- **`creator_is_owner` is passed to template but unused at the template layer** (per apply-progress deviation #5 / R-4). Kept for forward-compatibility with Phase 2 / 3.
+
+## Constraints honoured
+
+- ✅ READ-ONLY on production code outside `pages.py`, `agents.py`, `agent_detail.html`, `score.py` (no edits to forbidden surfaces).
+- ✅ Wrote/edited only `verify-report.md`.
+- ✅ New section ≈ 175 lines (well under the ~200-line budget).
+
+## Next recommended
+
+**sdd-archive** — Phase 1b (the final sub-PR of `compliance-flags`) is complete; archive the change and route the orchestrator to its `sdd-archive` step.
+
+## Key Learnings
+
+1. **Pairing boundary-contract tests with the additive-shape tests is the cheapest way to pin schema scope.** `test_agent_out_does_not_expose_compliance_penalty` (NOT on `AgentOut`) + `test_score_endpoint_includes_compliance_penalty` (IS on `ScoreOut`) form a single bidirectional assertion that catches silent schema drift in either direction. If a future contributor accidentally widens `AgentOut` OR silently drops the additive fields from `ScoreOut`, one of these two assertions fails immediately.
+2. **The `{# Phase 1b ... #}` Jinja comment in the template's `{% if profile.hireable %}` branch doubles as a design-decision breadcrumb.** When the spec says "no JS change required because `payment.js` short-circuits on `cta.disabled`," putting that contract into a template comment means the next reader of the template does not have to dig through the spec to understand why a disabled button is sufficient.
+3. **`ON CONFLICT(agent_id) DO UPDATE` is the SQLite+PostgreSQL-portable idempotency primitive for shared test fixtures.** It lets the same helper serve `tests/test_pages.py` (where `_seed_one()` already inserted the `agent_cache` row) and `tests/test_compliance_api.py` (where the test inserts only via the helper) without a second fixture split — and it survives the autouse `_truncate_tables` round-trip across runs.
+
+---
 
 # verify-report — Phase 1a-ii of `compliance-flags`
 
@@ -197,6 +405,27 @@ The ~882-line figure includes the 487-line `test_compliance_refresh.py` (16 scen
 3. The `compliance_refresh` orchestrator's UPSERT path is dialect-branched (Postgres `INSERT ... ON CONFLICT` vs sqlite delete-then-insert). This is necessary for the `_ensure_compliance_schema` autouse fixture to work on both engines, but it doubles the surface area of the UPSERT code. Future DB-backend additions (e.g. MySQL) need a third branch.
 
 ---
+
+<details>
+<summary>Phase 1a-ii envelope (historical, preserved from prior verification)</summary>
+
+```yaml
+schema: gentle-ai.verify-result/v1
+evidence_revision: sha256:1afdd64fa18bc43004d08bda1db2b15e7bc0456754c8de152ed579de0e5d56be
+verdict: pass
+blockers: 0
+critical_findings: 0
+requirements: 8/8
+scenarios: 23/23
+test_command: uv run pytest tests/test_compliance_refresh.py tests/test_admin_compliance.py tests/test_admin_compliance_refresh.py -v
+test_exit_code: 0
+test_output_hash: sha256:08ca52cd5308b300b68f720dd35d3964bc953a52592a35ef5e77dbec017d01e8
+build_command: uv run alembic upgrade head --sql
+build_exit_code: 0
+build_output_hash: sha256:d2745cbcbf02eb263d33f5a27e0abc31bef70afe5fa7c8f166b2f66c8074088d
+```
+
+</details>
 
 <details>
 <summary>Phase 1a-i envelope (historical, preserved from prior verification)</summary>
@@ -440,4 +669,5 @@ The 573-line figure includes docstrings + tests; production logic added is ~140 
 
 1. The strict TDD Cycle Evidence contract's "TDD Cycle Evidence table" form is interchangeable with a per-task T1..T8 narrative that carries raw pytest output; both satisfy the load-bearing RED→GREEN claim and the orchestrator should not reject either form.
 2. SQLAlchemy auto-prefixes `CheckConstraint.name` with `<table>_` at the ORM layer while the migration emits the unprefixed form; both resolve to the same constraint on Postgres but the introspection test must match the suffix, not the exact name.
+
 3. The 8-skipped Postgres-only test count is the load-bearing baseline integrity check; verifying the skip list is byte-identical pre/post change is what makes AC-9 testable, not just the `285/315` headline number.

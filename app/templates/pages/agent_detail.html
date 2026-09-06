@@ -176,7 +176,10 @@
        the score_dimensions markup, plus the latest A2A probe snapshot. -->
   <section class="agent-profile activity-score-card" id="activity-score">
     <h2>Activity score</h2>
-    <p class="activity-score-value">{{ local_score or 'n/a' }}/100</p>
+    <p class="activity-score-value">{{ displayed_activity_score or 'n/a' }}/100</p>
+    {% if compliance_penalty is defined and compliance_penalty > 0 %}
+    <span class="badge risk">⚠ Compliance: −{{ '%.2f'|format(compliance_penalty) }} pts</span>
+    {% endif %}
     {% if local_breakdown %}
     <dl>
       <dt>Breakdown</dt>
@@ -571,7 +574,19 @@
     <p class="hint">Includes ${{ '%.2f'|format(hire_fee_usd) }} marketplace fee.</p>
     {% endif %}
     {% if profile.hireable %}
-    <button id="hire-cta" type="button" class="btn btn-primary"
+    {# Phase 1b — OFAC compliance gate. The CTA renders with `disabled`
+       only when BOTH `creator_flagged` and `owner_flagged` are true. The
+       client-side handler in `app/static/js/payment.js` already short-
+       circuits on `cta.disabled`, so no JS change is required. #}
+    {% set both_flags = (creator_flagged and owner_flagged) %}
+    {% if creator_flagged and owner_flagged %}
+    <p class="ofac-block" role="alert">OFAC: hiring blocked — Hiring is disabled while OFAC compliance is unresolved for this agent.</p>
+    {% elif creator_flagged %}
+    <p class="ofac-warn" role="status">OFAC warning: creator address flagged. Hiring remains enabled.</p>
+    {% elif owner_flagged %}
+    <p class="ofac-warn" role="status">OFAC warning: owner address flagged. Hiring remains enabled.</p>
+    {% endif %}
+    <button id="hire-cta" type="button" class="btn btn-primary"{% if both_flags %} disabled aria-disabled="true"{% endif %}
             data-agent-id="{{ agent.agent_id }}"
             data-agent-url="{{ agent.agent_url or '' }}"
             data-csrf="{{ csrf_token() if csrf_token is defined else '' }}">
