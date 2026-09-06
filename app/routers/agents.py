@@ -266,10 +266,22 @@ async def get_agent_score(
         score = Decimal(str(computed))
     assert score is not None
 
+    # Phase 1b: OFAC compliance adjustment surface — additive ScoreOut fields.
+    # `compliance_penalty` mirrors the stored column 1a-i added and 1a-ii
+    # populates; `displayed_activity_score` is the user-facing value
+    # `max(0, activity_score - compliance_penalty)`. Floats at the JSON
+    # boundary (Pydantic default) — the column type is Decimal but Pydantic
+    # serializes these as floats, and the test asserts exact float equality.
+    # design §5.4 / §6.R-10: Decimal stays canonical inside `agent_cache`,
+    # float only at the serializer boundary.
+    compliance_penalty_value = float(row.compliance_penalty or 0)
+    score_value = float(score)
     return ScoreOut(
         chain=row.chain_id,
         token=row.token_id,
         activity_score=score,
+        compliance_penalty=compliance_penalty_value,
+        displayed_activity_score=max(0.0, score_value - compliance_penalty_value),
         pillars=pillars,
         breakdown=breakdown_for(probe, record),
     )

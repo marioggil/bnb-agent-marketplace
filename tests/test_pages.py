@@ -638,3 +638,128 @@ async def test_filter_offers_activity_sort_and_healthy_health(client, db):
     assert 'value="activity_score"' in body
     assert "Activity" in body
     assert 'value="healthy"' in body
+
+
+# ---------------------------------------------------------------------------
+# Phase 1b — OFAC compliance Hire-CTA gate (T5 + T7).
+# ---------------------------------------------------------------------------
+
+
+async def test_agent_detail_hire_cta_disabled_when_both_compliance_flags_set(
+    client, db
+):
+    """Both `creator_flagged` and `owner_flagged` MUST disable `#hire-cta`.
+
+    Spec: `openspec/changes/compliance-flags/spec.md` R5 + AC-5.
+    Pin the three render properties together:
+      1. `id="hire-cta"` and `disabled` on the same `<button>` element;
+      2. `aria-disabled="true"` on the same element;
+      3. the OFAC-blocking banner copy is present in the body.
+
+    RED evidence (T5): the route handler does not yet read
+    `agent_compliance_flags` for the agent, so the template context
+    has no `creator_flagged` / `owner_flagged` keys and the button
+    renders without `disabled`.
+    """
+    # Seed agent + wallet so the CTA would otherwise render enabled.
+    aid = await _seed_one(db, 1, name="Alpha", owner_address="0x" + "77" * 20)
+    async with db.begin():
+        row = await db.scalar(select(AgentCache).where(AgentCache.agent_id == aid))
+        assert row is not None
+        row.agent_wallet = "0x" + "88" * 20
+        row.x402_supported = True
+    # Pre-seed both compliance flags.
+    from tests._compliance_fixtures import seed_compliance_agent
+
+    await seed_compliance_agent(
+        db,
+        agent_id=aid,
+        creator_address="0x" + "aa" * 20,
+        owner_address="0x" + "bb" * 20,
+        creator_flagged=True,
+        owner_flagged=True,
+        compliance_penalty=50.00,
+        activity_score=72.50,
+    )
+
+    body = client.get("/agents/56/1").text
+
+    # Pin the block banner copy (one shared substring, easy to grep).
+    assert (
+        "Hiring is disabled while OFAC compliance is unresolved for this agent"
+        in body
+    ), "OFAC block banner copy missing on dual-flag agent"
+
+    # Locally isolate the #hire-cta element so we can assert the gate attrs
+    # both appear on the same button (not just somewhere in the page).
+    cta_idx = body.find('id="hire-cta"')
+    assert cta_idx != -1, "Hire CTA element missing from rendered HTML"
+    # The opening <button ... id="hire-cta" ...> tag ends at the first '>'
+    # after `id="hire-cta"`.
+    cta_tag_end = body.find(">", cta_idx)
+    assert cta_tag_end != -1
+    cta_open_tag = body[cta_idx:cta_tag_end]
+    assert "disabled" in cta_open_tag, (
+        f"#hire-cta must render `disabled` when both compliance flags are set. "
+        f"Got opening tag: {cta_open_tag!r}"
+    )
+    assert 'aria-disabled="true"' in cta_open_tag, (
+        f"#hire-cta must render `aria-disabled=\"true\"` when both compliance "
+        f"flags are set. Got opening tag: {cta_open_tag!r}"
+    )
+
+
+async def test_agent_detail_hire_cta_enabled_when_only_one_flag_set(client, db):
+    """Single-flag agent renders warning copy only; `#hire-cta` stays enabled.
+
+    Spec: `openspec/changes/compliance-flags/spec.md` R5 (single-flag
+    scenario). The CTA MUST NOT carry `disabled` or `aria-disabled="true"`,
+    and the OFAC-blocking banner copy MUST NOT appear.
+    """
+    aid = await _seed_one(db, 1, name="Alpha", owner_address="0x" + "77" * 20)
+    async with db.begin():
+        row = await db.scalar(select(AgentCache).where(AgentCache.agent_id == aid))
+        assert row is not None
+        row.agent_wallet = "0x" + "88" * 20
+        row.x402_supported = True
+    from tests._compliance_fixtures import seed_compliance_agent
+
+    # Creator flagged, owner NOT flagged — single flag.
+    await seed_compliance_agent(
+        db,
+        agent_id=aid,
+        creator_address="0x" + "aa" * 20,
+        owner_address="0x" + "bb" * 20,
+        creator_flagged=True,
+        owner_flagged=False,
+        compliance_penalty=30.00,
+        activity_score=72.50,
+    )
+
+    body = client.get("/agents/56/1").text
+
+    # Warning copy IS rendered.
+    assert "OFAC warning: creator address flagged" in body, (
+        "Single-flag agent must show the creator OFAC warning copy"
+    )
+
+    # Block-banner copy is NOT rendered (only appears on dual-flag).
+    assert (
+        "Hiring is disabled while OFAC compliance is unresolved for this agent"
+        not in body
+    )
+
+    # The CTA must NOT carry `disabled` on its opening tag — the gate is
+    # only active when both flags are set.
+    cta_idx = body.find('id="hire-cta"')
+    assert cta_idx != -1
+    cta_tag_end = body.find(">", cta_idx)
+    cta_open_tag = body[cta_idx:cta_tag_end]
+    assert "disabled" not in cta_open_tag, (
+        f"#hire-cta must NOT render `disabled` when only one flag is set. "
+        f"Got opening tag: {cta_open_tag!r}"
+    )
+    assert 'aria-disabled="true"' not in cta_open_tag, (
+        f"#hire-cta must NOT render `aria-disabled=\"true\"` when only one "
+        f"flag is set. Got opening tag: {cta_open_tag!r}"
+    )

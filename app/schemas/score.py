@@ -59,6 +59,15 @@ class ScoreOut(BaseModel):
     chain: int
     token: int
     activity_score: Decimal
+    # Phase 1b additive fields — OFAC compliance adjustment surface.
+    # `compliance_penalty` mirrors `agent_cache.compliance_penalty`
+    # (the stored scalar in 0.00..50.00, Numeric(5, 2)).
+    # `displayed_activity_score` is the user-facing value:
+    # `max(0, activity_score - compliance_penalty)`. Both default to 0.0
+    # so existing clients (and tests) that do not know about them keep
+    # working; the route handler populates them from the column at T4.
+    compliance_penalty: float = 0.0
+    displayed_activity_score: float = 0.0
     pillars: Pillars
     breakdown: list[dict[str, Any]]  # [{dimension, score, weight}]
 

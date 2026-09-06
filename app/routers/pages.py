@@ -920,6 +920,44 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
     tx_explorer_base = _tx_explorer_base()
     flagged_addresses = await _flagged_addresses_set()
 
+    # Phase 1b — OFAC compliance read-path (single SELECT, no N+1).
+    # Pull the per-agent flag row written by 1a-ii's orchestrator and
+    # compute the display-side penalty / displayed score locally. The
+    # template reads `creator_flagged`, `owner_flagged`,
+    # `compliance_penalty`, and `displayed_activity_score` to render the
+    # block banner / warning copy / disabled CTA / compliance badge.
+    # design §5.2 N+1 invariant: ONE query for ONE agent.
+    from sqlalchemy import select
+
+    from app.db.models.agent_compliance import AgentComplianceFlag
+    from app.services import compliance_refresh
+
+    async with AsyncSessionLocal() as compliance_session:
+        compliance_row = (
+            await compliance_session.execute(
+                select(AgentComplianceFlag).where(
+                    AgentComplianceFlag.agent_id == row.agent_id
+                )
+            )
+        ).scalar_one_or_none()
+
+    creator_flagged = bool(compliance_row and compliance_row.creator_flagged)
+    owner_flagged = bool(compliance_row and compliance_row.owner_flagged)
+    creator_is_owner = bool(
+        row.creator_address
+        and row.owner_address
+        and row.creator_address.strip().lower() == row.owner_address.strip().lower()
+    )
+    compliance_penalty = compliance_refresh.compute_penalty(
+        creator_flagged, owner_flagged
+    )
+    base_score = (
+        Decimal(str(local_score)) if local_score is not None else Decimal("0")
+    )
+    displayed_activity_score = max(
+        Decimal("0.00"), base_score - compliance_penalty
+    )
+
     # Locally mirrored individual reviews (agent-feedbacks): the summary
     # count drives the collapsible "Reviews (N)" panel; the rows themselves
     # load lazily via the /feedbacks HTMX endpoint.
@@ -964,6 +1002,18 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             "local_breakdown": local_breakdown,
             "latest_probe": latest_probe,
             "flagged_addresses": flagged_addresses,
+            # Phase 1b — OFAC compliance surface for the template.
+            # `creator_flagged` / `owner_flagged` drive the OFAC banner and
+            # the `#hire-cta disabled` gate; `compliance_penalty` and
+            # `displayed_activity_score` drive the score-card badge and the
+            # user-facing activity value. `creator_is_owner` is also passed
+            # for future copy (1c+) that wants to disclose when the same
+            # address triggered both flags.
+            "creator_flagged": creator_flagged,
+            "owner_flagged": owner_flagged,
+            "creator_is_owner": creator_is_owner,
+            "compliance_penalty": compliance_penalty,
+            "displayed_activity_score": displayed_activity_score,
             "feedback_total": feedback_total,
             "feedback_avg": feedback_avg,
             "chain_slugs": _CHAIN_SLUGS,
