@@ -180,6 +180,27 @@
     {% if compliance_penalty is defined and compliance_penalty > 0 %}
     <span class="badge risk">⚠ Compliance: −{{ '%.2f'|format(compliance_penalty) }} pts</span>
     {% endif %}
+    {# Phase wallet-activity — additive chip (spec AC-8). One new class
+       `.wallet-activity-chip` for flex layout; existing `.badge category`
+       is reused. Falls back to `Wallet activity: n/a/100` on aggregation
+       failure. `creator == owner` label renders when addresses match.
+    #}
+    <div class="wallet-activity-chip">
+      <span class="badge category">
+        Wallet activity:
+        {% if wallet_activity_score is not none %}
+          {{ '%.2f'|format(wallet_activity_score) }}/100
+        {% else %}
+          n/a/100
+        {% endif %}
+        {% if wallet_activity_breakdown is not none %}
+          (creator {{ '%.2f'|format(wallet_activity_breakdown.creator) }},
+           owner {{ '%.2f'|format(wallet_activity_breakdown.owner) }},
+           track {{ '%.2f'|format(wallet_activity_breakdown.track_record) }})
+        {% endif %}
+      </span>
+      {% if creator_is_owner_chip %}<span class="badge category">creator == owner</span>{% endif %}
+    </div>
     {% if local_breakdown %}
     <dl>
       <dt>Breakdown</dt>

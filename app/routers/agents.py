@@ -276,12 +276,51 @@ async def get_agent_score(
     # float only at the serializer boundary.
     compliance_penalty_value = float(row.compliance_penalty or 0)
     score_value = float(score)
+
+    # Phase wallet-activity: parallel, additive sub-score from creator + owner
+    # wallet on-chain footprint (spec wallet-activity AC-7). The composite
+    # `activity_score` is NEVER mutated; `wallet_activity_score` is the
+    # computed Decimal converted to float at the JSON boundary. Failure of
+    # either helper swallows → wallet_activity_score=None, breakdown=None,
+    # creator_is_owner=False (mirrors the compliance-flags swallow pattern).
+    wallet_activity_score_value: float | None = None
+    wallet_activity_breakdown_value: dict[str, Any] | None = None
+    creator_is_owner_value: bool = False
+    try:
+        from app.services import wallet_activity
+
+        signals = await wallet_activity.fetch_wallet_signals(db, row.agent_id)
+        track_record_pillar = pillars.track_record.score
+        wa_decimal = wallet_activity.compute_wallet_activity_score(
+            creator_events=signals.creator.events,
+            creator_counterparties=signals.creator.counterparties,
+            creator_recency_days=signals.creator.recency_days,
+            creator_is_neutral=signals.creator.is_neutral,
+            owner_events=signals.owner.events,
+            owner_counterparties=signals.owner.counterparties,
+            owner_recency_days=signals.owner.recency_days,
+            owner_is_neutral=signals.owner.is_neutral,
+            track_record_score=Decimal(str(track_record_pillar)),
+        )
+        wallet_activity_score_value = float(wa_decimal)
+        wallet_activity_breakdown_value = wallet_activity.compute_wallet_activity_breakdown(
+            signals, Decimal(str(track_record_pillar))
+        )
+        creator_is_owner_value = signals.creator_is_owner
+    except Exception:
+        logger.warning(
+            "wallet_activity_score fetch failed for %s", row.agent_id, exc_info=True
+        )
+
     return ScoreOut(
         chain=row.chain_id,
         token=row.token_id,
         activity_score=score,
         compliance_penalty=compliance_penalty_value,
         displayed_activity_score=max(0.0, score_value - compliance_penalty_value),
+        wallet_activity_score=wallet_activity_score_value,
+        wallet_activity_breakdown=wallet_activity_breakdown_value,
+        creator_is_owner=creator_is_owner_value,
         pillars=pillars,
         breakdown=breakdown_for(probe, record),
     )
