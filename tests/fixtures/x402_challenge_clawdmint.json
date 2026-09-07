@@ -1,0 +1,20 @@
+{
+  "x402Version": 2,
+  "error": "Payment required",
+  "resource": {
+    "url": "https://clawdmint-api.vercel.app/a2a",
+    "description": "ClawdMint is honest, kind & peppermint-flavored agent",
+    "mimeType": "application/json"
+  },
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "eip155:8453",
+      "amount": "1000",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "payTo": "0x75b583C518215E272f3C0a3BCC1b27012F294Adc",
+      "maxTimeoutSeconds": 300,
+      "extra": {"name": "USDC Coin", "version": "2"}
+    }
+  ]
+}

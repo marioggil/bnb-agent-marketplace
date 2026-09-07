@@ -120,6 +120,14 @@ def _validate_probe_url(url: str) -> httpx.URL:
 async def probe_agent_offer(url: str, *, timeout_s: float = 2.0) -> AgentOffer | None:
     """Probe one agent endpoint; return its `AgentOffer` or `None`.
 
+    Strategy (production-verified against clawdmint-api.vercel.app/a2a, agent
+    2468):
+      1. `GET` the declared endpoint first.
+      2. If it answers `405 Method Not Allowed` — the common A2A shape that
+         only accepts POST — retry with an A2A `tasks/send` JSON-RPC body.
+      3. In both paths, a `402 Payment Required` + `payment-required` header
+         is parsed into `AgentOffer` (accepts[0]).
+
     Never raises: every failure path (blocked URL, transport error, timeout,
     non-402, missing/malformed `payment-required` header) returns `None`.
     """
@@ -131,6 +139,41 @@ async def probe_agent_offer(url: str, *, timeout_s: float = 2.0) -> AgentOffer |
             resp = await client.get(target)
     except (httpx.HTTPError, ValueError, OSError):
         return None
+    # A2A agents commonly reject GET with 405 and require a POST tasks/send.
+    # Reuse the ALREADY-OPEN client for the retry, then parse the 402.
+    if resp.status_code == 405:
+        try:
+            async with httpx.AsyncClient(
+                timeout=timeout_s, follow_redirects=False
+            ) as client:
+                resp = await client.post(
+                    target,
+                    json=_A2A_TASKS_SEND_BODY,
+                    headers={"content-type": "application/json"},
+                )
+        except (httpx.HTTPError, ValueError, OSError):
+            return None
+    return _parse_offer_response(resp)
+
+
+#: A2A `tasks/send` minimal request body — used for the 405→POST retry.
+_A2A_TASKS_SEND_BODY: dict[str, Any] = {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tasks/send",
+    "params": {
+        "id": "marketplace-probe",
+        "message": {"role": "user", "parts": [{"text": "ping"}]},
+    },
+}
+
+
+def _parse_offer_response(resp: httpx.Response) -> AgentOffer | None:
+    """Parse a `402 + payment-required` response into `AgentOffer`; else None.
+
+    Shared by the GET and POST probe paths so both surfaces behave the same:
+    non-402 → None (no false positive), malformed header → None (never raise).
+    """
     if resp.status_code != 402:
         return None  # R4: non-402 → no offer, no false positive
     header = resp.headers.get("payment-required")
@@ -179,4 +222,10 @@ def is_supported_offer(offer: AgentOffer, settings: Any) -> bool:
     )
 
 
-__all__ = ["AgentOffer", "is_supported_offer", "probe_agent_offer", "_validate_probe_url"]
+__all__ = [
+    "AgentOffer",
+    "is_supported_offer",
+    "probe_agent_offer",
+    "_validate_probe_url",
+    "_parse_offer_response",
+]

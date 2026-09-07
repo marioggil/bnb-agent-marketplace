@@ -127,3 +127,87 @@ def test_payai_b64_matches_json_fixture():
     assert challenge["x402Version"] == 2
     assert challenge["accepts"][0]["amount"] == "10000"
     assert payai_b64() == payai_header()
+
+
+
+
+# T21b — 405 on GET → retry with A2A POST (tasks/send) → parse 402 (ClawdMint 2468 pattern).
+async def test_probe_retries_post_a2a_on_405(respx_mock):
+    """Real production case: clawdmint-api.vercel.app/a2a returns 405 for GET
+    and 402 for POST with an A2A `tasks/send` body. The probe must fall back
+    to POST and still parse the challenge."""
+    header = payai_header(asset=_offer().asset, network=_offer().network)
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(405, json={"error": "Method not allowed"})
+        # POST A2A tasks/send
+        import json as _json
+        body = _json.loads(request.read())
+        assert body["method"] == "tasks/send"
+        assert body["params"]["message"]["role"] == "user"
+        return httpx.Response(402, headers={"payment-required": header})
+
+    respx_mock.route(url=_PUBLIC_URL, method="GET").mock(side_effect=_handler)
+    respx_mock.route(url=_PUBLIC_URL, method="POST").mock(side_effect=_handler)
+
+    offer = await probe_agent_offer(_PUBLIC_URL)
+    assert offer is not None
+    assert offer.pay_to == "0x71C7656EC7ab88b098defB751B7401B5f6d8976F"
+    assert offer.amount_wei == 10000
+    methods = [c.request.method for c in respx_mock.calls]
+    assert methods == ["GET", "POST"]
+
+
+# 405 on GET AND POST → None (no retry loop).
+async def test_probe_405_then_405_returns_none(respx_mock):
+    def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(405, json={"error": "Method not allowed"})
+
+    respx_mock.route(url=_PUBLIC_URL, method="GET").mock(side_effect=_handler)
+    respx_mock.route(url=_PUBLIC_URL, method="POST").mock(side_effect=_handler)
+
+    assert await probe_agent_offer(_PUBLIC_URL) is None
+    methods = [c.request.method for c in respx_mock.calls]
+    assert methods == ["GET", "POST"]
+
+
+# 405 on GET, POST returns 404 → None.
+async def test_probe_405_then_404_returns_none(respx_mock):
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(405, json={"error": "Method not allowed"})
+        return httpx.Response(404)
+
+    respx_mock.route(url=_PUBLIC_URL, method="GET").mock(side_effect=_handler)
+    respx_mock.route(url=_PUBLIC_URL, method="POST").mock(side_effect=_handler)
+
+    assert await probe_agent_offer(_PUBLIC_URL) is None
+
+
+# Production capture (agent 2468, ClawdMint): real 402 challenge parsed via the
+# 405→POST A2A path. Pins the accepts[0] extraction against the live fixture.
+async def test_probe_parses_real_clawdmint_challenge(respx_mock):
+    import base64 as _b64
+    from pathlib import Path
+    fixture = Path(__file__).parent / "fixtures" / "x402_challenge_clawdmint.json"
+    challenge = fixture.read_text().strip()
+    header = _b64.urlsafe_b64encode(challenge.encode()).decode()
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(405, json={"error": "Method not allowed"})
+        return httpx.Response(402, headers={"payment-required": header})
+
+    respx_mock.route(url=_PUBLIC_URL, method="GET").mock(side_effect=_handler)
+    respx_mock.route(url=_PUBLIC_URL, method="POST").mock(side_effect=_handler)
+
+    offer = await probe_agent_offer(_PUBLIC_URL)
+    assert offer is not None
+    assert offer.pay_to == "0x75b583C518215E272f3C0a3BCC1b27012F294Adc"
+    assert offer.amount_wei == 1000
+    assert offer.asset == "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    assert offer.network == "eip155:8453"
+    assert offer.price_usd == Decimal(1000) / Decimal(10**18)
+    methods = [c.request.method for c in respx_mock.calls]
+    assert methods == ["GET", "POST"]
