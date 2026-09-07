@@ -891,8 +891,43 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
                 )
             )
             onchain_stats["events"] = e_result.scalar() or 0
+
+            # Phase wallet-activity: parallel, additive sub-score for the
+            # detail-page chip (spec wallet-activity AC-8). Reuses the
+            # existing `onchain_stats` try/except so a transfer-fetch
+            # failure already swallows wallet-activity failures too.
+            from app.services import agent_score as _as
+            from app.services import wallet_activity as _wa
+
+            wallet_signals = await _wa.fetch_wallet_signals(ocs, row.agent_id)
+            track_score_for_wa = _as.compute_track_record_pillar(
+                record.age_months,
+                record.event_count,
+                record.unique_buyers,
+                record.recency_days,
+            )
+            wallet_activity_score = float(
+                _wa.compute_wallet_activity_score(
+                    creator_events=wallet_signals.creator.events,
+                    creator_counterparties=wallet_signals.creator.counterparties,
+                    creator_recency_days=wallet_signals.creator.recency_days,
+                    creator_is_neutral=wallet_signals.creator.is_neutral,
+                    owner_events=wallet_signals.owner.events,
+                    owner_counterparties=wallet_signals.owner.counterparties,
+                    owner_recency_days=wallet_signals.owner.recency_days,
+                    owner_is_neutral=wallet_signals.owner.is_neutral,
+                    track_record_score=Decimal(str(track_score_for_wa)),
+                )
+            )
+            wallet_activity_breakdown = _wa.compute_wallet_activity_breakdown(
+                wallet_signals, Decimal(str(track_score_for_wa))
+            )
+            creator_is_owner_chip = wallet_signals.creator_is_owner
     except Exception:
         logger.warning("Failed to fetch onchain stats for %s", row.agent_id, exc_info=True)
+        wallet_activity_score = None
+        wallet_activity_breakdown = None
+        creator_is_owner_chip = False
 
     # The signed-in user's own hire history for this agent (re-hire UX).
     # Anonymous callers get empty lists; `my_paid_count` drives the
@@ -1014,6 +1049,14 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             "creator_is_owner": creator_is_owner,
             "compliance_penalty": compliance_penalty,
             "displayed_activity_score": displayed_activity_score,
+            # Phase wallet-activity — additive chip surface (spec AC-8).
+            # `wallet_activity_score` is the computed float (None on
+            # aggregation failure); `wallet_activity_breakdown` is the
+            # `{"creator", "owner", "track_record"}` dict;
+            # `creator_is_owner_chip` mirrors `WalletSignals.creator_is_owner`.
+            "wallet_activity_score": wallet_activity_score,
+            "wallet_activity_breakdown": wallet_activity_breakdown,
+            "creator_is_owner_chip": creator_is_owner_chip,
             "feedback_total": feedback_total,
             "feedback_avg": feedback_avg,
             "chain_slugs": _CHAIN_SLUGS,

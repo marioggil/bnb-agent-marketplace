@@ -1,0 +1,35 @@
+{
+  "chain": 56,
+  "token": 101,
+  "activity_score": "80.00",
+  "compliance_penalty": 0.0,
+  "displayed_activity_score": 80.0,
+  "pillars": {
+    "probe": {
+      "score": 92,
+      "responded": true,
+      "latency_ms": 150,
+      "status": "BOUND",
+      "presence": "online",
+      "skills_count": 2,
+      "probed_at": "2026-01-01T00:00:00Z"
+    },
+    "track_record": {
+      "score": 62,
+      "age_months": 6.011826544021025,
+      "event_count": 5,
+      "unique_buyers": 5,
+      "recency_days": 3
+    }
+  },
+  "breakdown": [
+    {"dimension": "responded", "score": 100, "weight": 0.5},
+    {"dimension": "latency",   "score": 100, "weight": 0.3},
+    {"dimension": "presence",  "score": 100, "weight": 0.1},
+    {"dimension": "skills",    "score": 20,  "weight": 0.1},
+    {"dimension": "age",       "score": 50,  "weight": 0.25},
+    {"dimension": "events",    "score": 50,  "weight": 0.25},
+    {"dimension": "buyers",    "score": 50,  "weight": 0.25},
+    {"dimension": "recency",   "score": 100, "weight": 0.25}
+  ]
+}

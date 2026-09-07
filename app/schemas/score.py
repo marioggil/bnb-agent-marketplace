@@ -68,6 +68,16 @@ class ScoreOut(BaseModel):
     # working; the route handler populates them from the column at T4.
     compliance_penalty: float = 0.0
     displayed_activity_score: float = 0.0
+    # Phase wallet-activity additive fields (spec A1 + wallet-activity AC-7).
+    # `wallet_activity_score` is a parallel, additive sub-score derived from
+    # creator + owner wallet on-chain footprint over the 90-day window. It is
+    # NEVER written to `activity_score` (the composite stays canonical); the
+    # `materialize_score()` write path is untouched. Defaults so existing
+    # clients that do not know about these fields keep working; the route
+    # handler populates them at T16.
+    wallet_activity_score: float | None = None
+    wallet_activity_breakdown: dict[str, Any] | None = None
+    creator_is_owner: bool = False
     pillars: Pillars
     breakdown: list[dict[str, Any]]  # [{dimension, score, weight}]
 
