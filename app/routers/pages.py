@@ -1117,12 +1117,12 @@ def _build_hire_offer(
             reason="asset-network-not-supported",
         )
     fee = settings.x402_fee_amount_usd if (settings.x402_fee_wallet or "").strip() else None
-    total = float(offer.price_usd) + float(fee or 0)
+    total = float(offer.price_usd)  # x402-remove-fee-multichain: no marketplace fee
     return HireOffer(
         has_offer=True,
         price_usd=total,
         agent_price_usd=float(offer.price_usd),
-        fee_usd=float(fee) if fee is not None else None,
+        fee_usd=None,
         pay_to=offer.pay_to,
         disabled=False,
         reason=None,

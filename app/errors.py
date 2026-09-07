@@ -191,9 +191,24 @@ class PaymentGatewayUnconfigured(PaymentError):
     code = "payment_gateway_unconfigured"
 
 
+class UnknownRail(PaymentError):
+    """Chain has no settlement rail in the static map (R3)."""
+
+    status_code = 500
+    code = "unknown_rail"
+
+
+class AgentOfferUnavailable(PaymentError):
+    """No supported agent offer at hire/pay time (R4/Q2) — never a flat fallback."""
+
+    status_code = 503
+    code = "agent_offer_unavailable"
+
+
 __all__ = [
     "AlreadyPaid",
     "AmountMismatch",
+    "AgentOfferUnavailable",
     "AppError",
     "AuthRequired",
     "BroadcastFailed",
@@ -207,6 +222,7 @@ __all__ = [
     "PaymentError",
     "PaymentGatewayUnconfigured",
     "SignatureMismatch",
+    "UnknownRail",
     "UnsupportedRail",
     "UpstreamRateLimit",
     "UpstreamUnavailable",
@@ -316,6 +332,8 @@ def register_error_handlers(app: FastAPI) -> None:
         AlreadyPaid,
         BroadcastFailed,
         PaymentGatewayUnconfigured,
+        UnknownRail,
+        AgentOfferUnavailable,
     ):
         app.add_exception_handler(
             cls,

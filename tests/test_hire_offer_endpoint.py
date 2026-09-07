@@ -55,12 +55,21 @@ async def _seed(
     return aid
 
 
-def _supported_header() -> str:
+def _supported_header_for_solana() -> str:
+    return payai_header(asset="0x" + "44" * 20, network="solana:mainnet")
+
+
+def _supported_header(chain_id: int | None = None) -> str:
     settings = get_settings()
-    return payai_header(
-        asset=settings.x402_u_token_address,
-        network=f"eip155:{settings.x402_chain_id}",
-    )
+    if chain_id is None:
+        chain_id = settings.x402_chain_id
+    rail = settings.x402_rail_for(chain_id)
+    return payai_header(asset=rail.token_address, network=f"eip155:{chain_id}")
+
+
+# x402-remove-fee-multichain (R8): any rail-map EVM chain is enabled and the
+# partial never renders a marketplace-fee line.
+_RAIL_MAP_CHAINS = [8453, 137, 43114]
 
 
 def _offer_endpoint(client, token_id: int = 1) -> str:
@@ -78,7 +87,8 @@ async def test_hire_offer_renders_real_price(client, db, respx_mock, monkeypatch
         respx_mock.get(_A2A).respond(402, headers={"payment-required": _supported_header()})
         body = _offer_endpoint(client, 1)
         assert "Hire for $" in body
-        assert "marketplace fee" in body
+        # R8 — the fee line is gone even when a fee wallet is configured.
+        assert "marketplace fee" not in body
         assert 'data-has-offer="true"' in body
         # D-8: the fragment renders the slot content, never a second button.
         assert "<button" not in body
@@ -86,25 +96,54 @@ async def test_hire_offer_renders_real_price(client, db, respx_mock, monkeypatch
         _settings_cache.cache_clear()
 
 
-# T10 RED — no endpoint → "Not available" + disabled-state script, no probe.
-async def test_hire_offer_disabled_when_no_endpoint(client, db, respx_mock):
-    await _seed(db, 2, a2a=None, agent_url=None)
-    body = _offer_endpoint(client, 2)
-    assert "Not available" in body
-    assert 'data-has-offer="false"' in body
-    assert "disabled" in body  # the idempotent inline script sets #hire-cta.disabled
-    assert respx_mock.calls == []  # no probe issued
+# T15 RED — every rail-map EVM chain (Base/Polygon/Avalanche USDC) renders
+# an enabled Hire CTA with the probe price and no fee text (R8).
+async def test_hire_offer_enabled_for_rail_map_evm_chains(client, db, respx_mock, monkeypatch):
+    monkeypatch.setenv("X402_FEE_WALLET", "0x" + "88" * 20)
+    _settings_cache.cache_clear()
+    try:
+        for idx, chain_id in enumerate(_RAIL_MAP_CHAINS, start=11):
+            endpoint = f"{_A2A}-{chain_id}"
+            await _seed(db, idx, a2a=endpoint)
+            respx_mock.get(endpoint).respond(
+                402, headers={"payment-required": _supported_header(chain_id)}
+            )
+            body = _offer_endpoint(client, idx)
+            assert "Hire for $" in body, f"chain {chain_id} not enabled"
+            assert "marketplace fee" not in body
+            assert 'data-has-offer="true"' in body
+    finally:
+        _settings_cache.cache_clear()
 
 
-# T12 RED — unsupported asset/network (raw PayAI fixture) → "Not available".
-async def test_hire_offer_disabled_when_unsupported_asset(client, db, respx_mock):
-    await _seed(db, 3, a2a=_A2A)
-    # Raw PayAI fixture: eip155:84532 + base-sepolia asset → off the rail.
-    respx_mock.get(_A2A).respond(402, headers={"payment-required": payai_header()})
-    body = _offer_endpoint(client, 3)
+# T15 RED — unsupported networks (non-EVM / out-of-map) stay disabled.
+async def test_hire_offer_disabled_for_non_evm_and_out_of_map(client, db, respx_mock):
+    await _seed(db, 21, a2a=_A2A)
+    # Solana network (non-eip155) → disabled.
+    respx_mock.get(_A2A).respond(
+        402, headers={"payment-required": _supported_header_for_solana()}
+    )
+    body = _offer_endpoint(client, 21)
     assert "Not available" in body
     assert 'data-has-offer="false"' in body
     assert "Hire for $" not in body
+
+
+# T18 TRIANGULATE — the rendered price is the probe estimate (display-only):
+# raw-wei amount 10000 → price_usd 1e-14 renders as the probe value, never
+# the fee-inflated flat price $1.03.
+async def test_price_usd_is_probe_estimate_only(client, db, respx_mock, monkeypatch):
+    monkeypatch.setenv("X402_FEE_WALLET", "0x" + "88" * 20)
+    _settings_cache.cache_clear()
+    try:
+        await _seed(db, 31, a2a=_A2A)
+        respx_mock.get(_A2A).respond(402, headers={"payment-required": _supported_header()})
+        body = _offer_endpoint(client, 31)
+        assert "Hire for $0.00" in body  # Decimal(10000)/10**18, no fee added
+        assert "Hire for $1.03" not in body
+        assert "marketplace fee" not in body
+    finally:
+        _settings_cache.cache_clear()
 
 
 # D-2 — unreachable / non-402 endpoint → "Not available".

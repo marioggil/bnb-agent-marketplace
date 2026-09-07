@@ -14,6 +14,7 @@ Design: D5 (config boundary), id 26.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 from functools import lru_cache
 from typing import Final
@@ -56,6 +57,58 @@ U_TOKEN_VERSION: Final[str] = "1"
 _X402_RPC_DEFAULTS: Final[dict[int, str]] = {
     X402_CHAIN_TESTNET: "https://bsc-testnet-rpc.publicnode.com",
     X402_CHAIN_MAINNET: "https://bsc-dataseed.bnbchain.org",
+}
+
+#: A static settlement rail: chain id, public RPC, and the token the agent
+#: quotes on that chain with its EIP-712 domain facts (so signature recovery
+#: uses the correct typed-data domain). x402-remove-fee-multichain R1.
+@dataclass(frozen=True)
+class Rail:
+    chain_id: int
+    rpc_url: str
+    token_address: str
+    token_name: str
+    token_version: str
+
+#: Static chain_id → rail map for settlement (spec R1). Base 8453, Polygon
+#: 137 and Avalanche 43114 settle USDC; BSC 56 / testnet 97 keep $U. No
+#: other chains in v1. $U facts reuse the pinned U_TOKEN_NAME/VERSION.
+X402_RAIL_MAP: Final[dict[int, Rail]] = {
+    8453: Rail(
+        8453,
+        "https://mainnet.base.org",
+        "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "USD Coin",
+        "2",
+    ),
+    137: Rail(
+        137,
+        "https://polygon-rpc.com",
+        "0x3c499c542cEF5E3811e1792ce70d8cC03d50c3359",
+        "USD Coin",
+        "2",
+    ),
+    43114: Rail(
+        43114,
+        "https://api.avax.network/ext/bc/C/rpc",
+        "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48A6E",
+        "USD Coin",
+        "2",
+    ),
+    56: Rail(
+        56,
+        "https://bsc-dataseed.bnbchain.org",
+        X402_U_TOKEN_ADDRESS_MAINNET,
+        U_TOKEN_NAME,
+        U_TOKEN_VERSION,
+    ),
+    97: Rail(
+        97,
+        "https://bsc-testnet-rpc.publicnode.com",
+        X402_U_TOKEN_ADDRESS_TESTNET,
+        U_TOKEN_NAME,
+        U_TOKEN_VERSION,
+    ),
 }
 
 
@@ -276,6 +329,14 @@ class Settings(BaseSettings):
     def x402_payments_configured(self) -> bool:
         """True when a facilitator key is present (pay endpoint usable)."""
         return bool(self.x402_facilitator_key.strip())
+
+    def x402_rail_for(self, chain_id: int) -> Rail | None:
+        """Rail-map lookup; None for chains the marketplace cannot settle.
+
+        Returns None (not raise) for the support-check / UI path; the strict
+        `get_token_config` path raises `UnknownRail` for the same miss.
+        """
+        return X402_RAIL_MAP.get(chain_id)
 
 
 def get_settings() -> Settings:
