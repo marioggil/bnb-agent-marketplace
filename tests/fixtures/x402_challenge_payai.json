@@ -1,0 +1,19 @@
+{
+  "x402Version": 2,
+  "error": "PAYMENT-SIGNATURE header is required",
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "eip155:84532",
+      "amount": "10000",
+      "payTo": "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
+      "maxTimeoutSeconds": 300,
+      "asset": "0x036CbD53844cC01f3f9D29c5B4e78F8C3C2A3CF7e",
+      "extra": {
+        "name": "United Stables",
+        "version": "1",
+        "assetTransferMethod": "eip3009"
+      }
+    }
+  ]
+}

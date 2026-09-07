@@ -30,6 +30,12 @@ class HireOut(BaseModel):
     pay_to: str | None = None
     challenge_expiry: datetime | None = None
     tx_hash: str | None = None
+    # x402-agent-hire AC-5 — what the agent's own endpoint quoted at hire
+    # time (null on the flat fallback path).
+    amount_agent: Decimal | None = None
+    pay_to_agent: str | None = None
+    asset_agent: str | None = None
+    network_agent: str | None = None
     created_at: datetime
     updated_at: datetime
 

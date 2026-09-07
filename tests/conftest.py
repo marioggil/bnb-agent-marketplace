@@ -358,6 +358,50 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# ---------------------------------------------------------------------------
+# x402 agent-offer probe fixtures (x402-agent-hire) — the captured PayAI
+# challenge (explore spike) plus a helper that rewrites asset/network to the
+# test rail so the SAME fixture drives both the supported and unsupported
+# hire-offer paths. `payai_b64` is the whitespace-free base64 literal — the
+# exact `PAYMENT-REQUIRED` header value — pinned so drift is caught.
+# ---------------------------------------------------------------------------
+
+
+_FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
+
+
+def _load_payai_challenge() -> dict:
+    with open(os.path.join(_FIXTURES_DIR, "x402_challenge_payai.json"), encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def payai_header(*, asset: str | None = None, network: str | None = None) -> str:
+    """Return the `PAYMENT-REQUIRED` base64 for the PayAI challenge fixture.
+
+    When `asset`/`network` are given, the accepts[0] values are rewritten to
+    the test rail (e.g. `settings.x402_u_token_address` + `eip155:97`); the
+    raw fixture stays on the captured base-sepolia values (eip155:84532) so it
+    exercises the unsupported-asset path by default.
+    """
+    challenge = _load_payai_challenge()
+    if asset is not None or network is not None:
+        accept = challenge["accepts"][0]
+        if asset is not None:
+            accept["asset"] = asset
+        if network is not None:
+            accept["network"] = network
+    raw = json.dumps(challenge, separators=(",", ":")).encode("utf-8")
+    return base64.b64encode(raw).decode("ascii")
+
+
+#: The whitespace-free base64 literal from the spike — used by the probe tests
+#: to pin the exact header value, independent of the JSON file.
+def payai_b64() -> str:
+    with open(os.path.join(_FIXTURES_DIR, "x402_challenge_payai.b64"), encoding="utf-8") as fh:
+        return fh.read().strip()
+
+
+
 @pytest.fixture
 def app():
     clear_settings_cache()

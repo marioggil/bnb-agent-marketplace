@@ -1,0 +1,33 @@
+{# x402-agent-hire (D-8): swap-target content for #hire-offer-slot — the inner
+   label of the STABLE #hire-cta button. This fragment NEVER renders a <button>:
+   payment.js binds #hire-cta at DOMContentLoaded and the node must survive the
+   swap (only the inner span is replaced via hx-swap="innerHTML"). #}
+{% if offer.has_offer %}
+<span class="hire-offer-label is-enabled" data-has-offer="true"
+      data-pay-to="{{ offer.pay_to or '' }}">
+  Hire for ${{ '%.2f'|format(offer.price_usd) }}
+  {% if offer.fee_usd is not none %}<small class="hire-offer-fee">Includes ${{ '%.2f'|format(offer.fee_usd) }} marketplace fee</small>{% endif %}
+</span>
+{% else %}
+<span class="hire-offer-label is-disabled" data-has-offer="false"
+      data-disabled-reason="{{ offer.reason or '' }}">
+  Not available
+  {% if offer.reason == 'asset-network-not-supported' %}
+  <small>This agent quotes an asset or network the marketplace cannot settle.</small>
+  {% elif offer.reason == 'endpoint-unreachable' %}
+  <small>The agent&rsquo;s endpoint could not be reached.</small>
+  {% elif offer.reason == 'no-payment-wallet' %}
+  <small>No payment wallet is registered.</small>
+  {% endif %}
+</span>
+<script>
+  (function () {
+    var cta = document.getElementById("hire-cta");
+    if (cta) {
+      cta.disabled = true;
+      cta.setAttribute("aria-disabled", "true");
+      cta.classList.add("is-disabled");
+    }
+  })();
+</script>
+{% endif %}

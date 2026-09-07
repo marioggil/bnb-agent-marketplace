@@ -43,6 +43,7 @@ from app.services.payment import (
     get_token_config,
     verify_payment,
 )
+from app.services.x402_client import is_supported_offer, probe_agent_offer
 
 logger = logging.getLogger(__name__)
 
@@ -93,13 +94,22 @@ async def create_hire(
     agent = await db.scalar(select(AgentCache).where(AgentCache.agent_id == payload.agent_id))
     if agent is None:
         raise NotFound(f"agent {payload.agent_id!r} not cached")
-    pay_to = agent.agent_wallet
+
+    settings = get_settings()
+    # x402-agent-hire (D-1/D-11): re-probe the agent's real offer at hire
+    # time (no cache). a2a_endpoint first, agent_url fallback; when the
+    # offer is available AND its asset/network match the rail, accepts[0]
+    # uses the agent's real pay_to/amount — otherwise flat fallback.
+    endpoint = agent.a2a_endpoint or agent.agent_url
+    offer = await probe_agent_offer(endpoint) if endpoint else None
+    use_offer = offer is not None and is_supported_offer(offer, settings)
+
+    pay_to = offer.pay_to if use_offer else agent.agent_wallet
     if not pay_to:
         raise NoPayTo("agent has no payment wallet configured (no owner fallback)")
 
-    settings = get_settings()
-    amount = settings.x402_default_price_usd
-    amount_wei = int(amount * _WEI_PER_UNIT)
+    amount = offer.price_usd if use_offer else settings.x402_default_price_usd
+    amount_wei = int(amount * _WEI_PER_UNIT)  # same conversion as today
     fee_wallet = (settings.x402_fee_wallet or "").strip()
     fee_wei = (
         int(settings.x402_fee_amount_usd * _WEI_PER_UNIT) if fee_wallet else None
@@ -116,6 +126,12 @@ async def create_hire(
         rail=EIP3009_RAIL,
         pay_to=pay_to,
         challenge_expiry=now + timedelta(seconds=DEFAULT_TIMEOUT_SECONDS),
+        # x402-agent-hire AC-5: evidence columns populated only when the
+        # offer is used; null on the flat fallback path.
+        amount_agent=offer.price_usd if use_offer else None,
+        pay_to_agent=offer.pay_to if use_offer else None,
+        asset_agent=offer.asset if use_offer else None,
+        network_agent=offer.network if use_offer else None,
     )
     db.add(row)
     await db.flush()
