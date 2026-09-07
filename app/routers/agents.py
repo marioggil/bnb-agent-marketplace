@@ -15,11 +15,12 @@ import re
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import and_, case, func, or_, select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import Float, and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.agent import AgentCache
+from app.db.models.agent_compliance import AgentComplianceFlag
 from app.db.models.agent_probe import AgentProbe
 from app.db.session import get_db
 from app.errors import NotFound, ValidationError
@@ -31,6 +32,7 @@ from app.schemas.score import (
     Pillars,
     ProbePillar,
     ScoreOut,
+    ScoreOutMinimal,
     TrackRecordPillar,
 )
 from app.services import agent_score
@@ -102,6 +104,140 @@ async def list_agents(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/score", response_model=Page[ScoreOutMinimal])
+async def rank_agents_score(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    category: str | None = Query(
+        default=None,
+        description=(
+            "Optional category filter. Accepted values mirror `list_agents`. "
+            "Unknown values → HTTP 400. Empty string is treated as no filter."
+        ),
+    ),
+    sort: str = Query(
+        default="displayed_activity_score",
+        description="Sort key. v1 supports `displayed_activity_score` only.",
+    ),
+    limit: int = Query(
+        default=20,
+        description="Page size. Default 20. Clamped to 100. Negative or non-int → 400.",
+    ),
+    offset: int = Query(default=0, ge=0),
+) -> Page[ScoreOutMinimal]:
+    """Ranking endpoint — `Page[ScoreOutMinimal]` ordered by displayed score.
+
+    Spec `openspec/changes/score-integration/spec.md` AC-1/AC-2/AC-3.
+    Declared BEFORE `/{chain_id}/{token_id}` so the literal `/score` segment
+    is never swallowed by the path-param routes (same key learning as the
+    `/compare` route — path-param-first routes shadow literal siblings
+    declared below them). Single `SELECT` against `AgentCache` with a
+    `LEFT JOIN` to `agent_compliance_flags` for `creator_is_owner`; the
+    `displayed_activity_score` is computed at SELECT time via portable
+    `CASE WHEN a IS NULL THEN NULL WHEN a - b > 0 THEN a - b ELSE 0 END`
+    (SQLite has no `GREATEST`; identical on PostgreSQL).
+    """
+    if sort != "displayed_activity_score":
+        raise HTTPException(
+            status_code=400,
+            detail=f"unsupported sort key: {sort!r} (expected 'displayed_activity_score')",
+        )
+    if category is not None and category != "" and category not in _RANK_CATEGORIES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"unsupported category: {category!r} (expected one of "
+                f"{sorted(_RANK_CATEGORIES)})"
+            ),
+        )
+
+    # Manual `limit` validation so the spec-pinned HTTP 400 boundary holds
+    # for negative values (FastAPI's `Query(ge=1)` would emit 422). The
+    # upper bound is clamped silently to 100 per AC-1.
+    if limit < 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"invalid limit: {limit!r} (expected int >= 1)",
+        )
+    if limit > 100:
+        limit = 100
+
+    diff = AgentCache.activity_score - AgentCache.compliance_penalty
+    displayed_expr = case(
+        (AgentCache.activity_score.is_(None), None),
+        (diff > 0, diff),
+        else_=0,
+    ).cast(Float).label("displayed_activity_score")
+
+    stmt = (
+        select(
+            AgentCache.chain_id,
+            AgentCache.token_id,
+            AgentCache.name,
+            AgentCache.activity_score,
+            AgentCache.compliance_penalty,
+            displayed_expr,
+            AgentComplianceFlag.creator_is_owner,
+        )
+        .select_from(AgentCache)
+        .outerjoin(
+            AgentComplianceFlag,
+            AgentComplianceFlag.agent_id == AgentCache.agent_id,
+        )
+    )
+    count_stmt = select(func.count()).select_from(AgentCache)
+
+    if category:
+        stmt = stmt.where(AgentCache.category == category)
+        count_stmt = count_stmt.where(AgentCache.category == category)
+
+    stmt = (
+        stmt.order_by(displayed_expr.desc().nullslast())
+        .offset(offset)
+        .limit(limit)
+    )
+
+    total = int(await db.scalar(count_stmt) or 0)
+    rows = (await db.execute(stmt)).all()
+
+    items = [
+        ScoreOutMinimal(
+            chain=row.chain_id,
+            token=row.token_id,
+            name=row.name,
+            activity_score=row.activity_score,
+            compliance_penalty=float(row.compliance_penalty or 0),
+            displayed_activity_score=float(row.displayed_activity_score or 0.0),
+            creator_is_owner=bool(row.creator_is_owner),
+        )
+        for row in rows
+    ]
+    return Page[ScoreOutMinimal](
+        items=items,
+        total=total,
+        page=(offset // limit) + 1 if limit else 1,
+        page_size=limit,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Score ranking surface — score-integration AC-1/AC-2/AC-3.
+# ---------------------------------------------------------------------------
+
+_RANK_CATEGORIES: frozenset[str] = frozenset({
+    "rebalancing",
+    "grid_trading",
+    "yield_optimisation",
+    "health_factor_monitoring",
+    "dev_automation",
+    "creative_design",
+    "marketing_content",
+    "data_analytics",
+    "security_compliance",
+    "admin_ops",
+    "other",
+})
 
 
 @router.get("/{chain_id}/{token_id}", response_model=AgentOut)
