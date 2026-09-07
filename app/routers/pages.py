@@ -25,6 +25,7 @@ from app.db.models.agent import AgentCache
 from app.db.models.favorite import Favorite
 from app.db.session import AsyncSessionLocal
 from app.errors import AuthRequired, NotFound
+from app.schemas.hire_offer import HireOffer
 from app.services.auth import (
     SESSION_COOKIE_NAME,
     _read_session,
@@ -32,6 +33,11 @@ from app.services.auth import (
     issue_csrf,
 )
 from app.services.categories import CATEGORIES
+from app.services.x402_client import (
+    AgentOffer,
+    is_supported_offer,
+    probe_agent_offer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1062,6 +1068,94 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             "chain_slugs": _CHAIN_SLUGS,
         },
     )
+
+
+def _endpoint_of(agent: Any) -> str | None:
+    """Probe source (D-1): a2a_endpoint first, agent_url fallback."""
+    return agent.a2a_endpoint or agent.agent_url
+
+
+def _build_hire_offer(
+    agent: Any, offer: AgentOffer | None, settings: Any
+) -> HireOffer:
+    """Typed render context for the hire-offer partial (design §5).
+
+    Hard constraints: D-2 (no offer -> disabled "not available", never a
+    guessed price), D-4 (fee adds on top of the real price), D-6 (price only
+    when asset+network match the rail).
+    """
+    if not (agent.x402_supported and agent.agent_wallet):
+        return HireOffer(
+            has_offer=False,
+            price_usd=None,
+            agent_price_usd=None,
+            fee_usd=None,
+            pay_to=None,
+            disabled=True,
+            reason="no-payment-wallet",
+        )
+    if offer is None:
+        return HireOffer(
+            has_offer=False,
+            price_usd=None,
+            agent_price_usd=None,
+            fee_usd=None,
+            pay_to=None,
+            disabled=True,
+            reason=(
+                "no-endpoint" if _endpoint_of(agent) is None else "endpoint-unreachable"
+            ),
+        )
+    if not is_supported_offer(offer, settings):
+        return HireOffer(
+            has_offer=False,
+            price_usd=None,
+            agent_price_usd=None,
+            fee_usd=None,
+            pay_to=offer.pay_to,
+            disabled=True,
+            reason="asset-network-not-supported",
+        )
+    fee = settings.x402_fee_amount_usd if (settings.x402_fee_wallet or "").strip() else None
+    total = float(offer.price_usd) + float(fee or 0)
+    return HireOffer(
+        has_offer=True,
+        price_usd=total,
+        agent_price_usd=float(offer.price_usd),
+        fee_usd=float(fee) if fee is not None else None,
+        pay_to=offer.pay_to,
+        disabled=False,
+        reason=None,
+    )
+
+
+@router.get("/agents/{chain_id}/{token_id}/hire-offer")
+async def hire_offer_endpoint(request: Request, chain_id: int, token_id: int) -> Response:
+    """Lazy x402 offer probe (x402-agent-hire): real price or disabled state.
+
+    Public GET fragment (no auth, no CSRF, read-only). Probes the agent
+    endpoint (a2a_endpoint, else agent_url) with a 2s timeout and renders the
+    inner `#hire-offer-slot` content so the STABLE `#hire-cta` button keeps
+    payment.js's DOMContentLoaded binding (D-8). The extra path segment cannot
+    collide with `/agents/{chain_id}/{token_id}`.
+    """
+    from sqlalchemy import select
+
+    async with AsyncSessionLocal() as session:
+        agent = await session.scalar(
+            select(AgentCache).where(
+                AgentCache.chain_id == chain_id, AgentCache.token_id == token_id
+            )
+        )
+    if agent is None:
+        raise NotFound(f"agent {chain_id}:{token_id} not cached")
+    settings = get_settings()
+    endpoint = _endpoint_of(agent)
+    offer = None
+    if agent.x402_supported and agent.agent_wallet and endpoint:
+        offer = await probe_agent_offer(endpoint)
+    hire_offer = _build_hire_offer(agent, offer, settings)
+    return _render(request, "partials/hire_offer.html", {"offer": hire_offer})
 
 
 @router.get("/agents/{chain_id}/{token_id}/feedbacks")

@@ -145,6 +145,31 @@ async def test_agent_detail_no_hired_panel_for_anonymous(client, db):
     assert "Hired by you" not in body
     assert "Hire again" not in body
 
+async def test_agent_detail_lazy_hire_offer_wiring(client, db):
+    """R9/D-8: hireable agent renders the stable #hire-cta with the lazy
+    hire-offer wiring — inner #hire-offer-slot shows "Checking availability…"
+    and the button carries hx-get to the hire-offer endpoint, so the real
+    agent price swaps in without replacing the payment.js-bound node."""
+    aid = await _seed_one(db, 7, name="LazyProbe")
+    agent = await db.scalar(select(AgentCache).where(AgentCache.agent_id == aid))
+    assert agent is not None
+    agent.agent_wallet = "0x" + "88" * 20
+    agent.x402_supported = True
+    # Give the agent an A2A endpoint so hire-offer has something to probe.
+    agent.a2a_endpoint = "https://agent.example.com/a2a"
+    await db.commit()
+
+    body = client.get("/agents/56/7").text
+    assert 'id="hire-cta"' in body
+    assert 'id="hire-offer-slot"' in body
+    assert "Checking availability" in body
+    assert 'hx-get="/agents/56/7/hire-offer"' in body
+    assert 'hx-target="#hire-offer-slot"' in body
+    assert 'hx-trigger="load"' in body
+    # The button node must survive (payment.js binds it at DOMContentLoaded) —
+    # the swap target is the inner slot, never the button itself.
+    assert 'data-agent-id="' in body
+
 
 # Card + detail show the locally-computed average of mirrored feedbacks.
 async def test_agent_score_uses_feedback_average(client, db):

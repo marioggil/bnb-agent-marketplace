@@ -47,13 +47,21 @@ def _detail(client, token_id: int = 1) -> str:
     return client.get(f"/agents/{BSC_CHAIN_ID}/{token_id}").text
 
 
-# W1 — CTA shows the flat price and is enabled when the agent has a wallet.
+# W1 — hireable CTA starts in the lazy state (R9/D-8): the stable #hire-cta
+# node is present and enabled, the inner #hire-offer-slot says
+# "Checking availability…", and the button wires hx-get to the hire-offer
+# endpoint so the agent's real x402 price swaps in post-render. The flat
+# price is no longer hardcoded into the initial body (design §3.5).
 async def test_cta_renders_price_and_is_enabled(client, db):
     await _seed_one(db, 1)
     body = _detail(client, 1)
-    assert "Hire for $1.03" in body
     assert 'id="hire-cta"' in body
+    assert 'id="hire-offer-slot"' in body
+    assert "Checking availability" in body
     assert "disabled" not in body
+    assert 'hx-get="/agents/56/1/hire-offer"' in body
+    assert 'hx-target="#hire-offer-slot"' in body
+    assert 'hx-trigger="load"' in body
     # W3 — redirect target wiring: http(s) agent_url exposed to the signer.
     assert f'data-agent-url="{_AGENT_URL}"' in body
     assert 'data-agent-id="56:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432:1"' in body

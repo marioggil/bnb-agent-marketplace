@@ -603,11 +603,7 @@
       </p>
     </div>
     {% endif %}
-    <p class="hire-price">Hire for ${{ '%.2f'|format(hire_price_usd) }}</p>
-    {% if hire_fee_usd %}
-    <p class="hint">Includes ${{ '%.2f'|format(hire_fee_usd) }} marketplace fee.</p>
-    {% endif %}
-    {% if profile.hireable %}
+      {% if profile.hireable %}
     {# Phase 1b — OFAC compliance gate. The CTA renders with `disabled`
        only when BOTH `creator_flagged` and `owner_flagged` are true. The
        client-side handler in `app/static/js/payment.js` already short-
@@ -618,8 +614,14 @@
     <button id="hire-cta" type="button" class="btn btn-primary"{% if both_flags %} disabled aria-disabled="true"{% endif %}
             data-agent-id="{{ agent.agent_id }}"
             data-agent-url="{{ agent.agent_url or '' }}"
-            data-csrf="{{ csrf_token() if csrf_token is defined else '' }}">
-      Hire {% if my_paid_count %}again {% endif %}for ${{ '%.2f'|format(hire_price_usd) }}
+            data-csrf="{{ csrf_token() if csrf_token is defined else '' }}"
+            {% if not both_flags %}
+            hx-get="/agents/{{ agent.chain_id }}/{{ agent.token_id }}/hire-offer"
+            hx-target="#hire-offer-slot"
+            hx-trigger="load"
+            hx-swap="innerHTML"
+            {% endif %}>
+      <span id="hire-offer-slot">{% if my_paid_count %}Hire again for ${{ '%.2f'|format(hire_price_usd) }}{% elif both_flags %}Hire for ${{ '%.2f'|format(hire_price_usd) }}{% else %}Checking availability&hellip;{% endif %}</span>
     </button>
     {% elif profile.external_web_url %}
     <a href="{{ profile.external_web_url }}" target="_blank" rel="noopener"
@@ -628,6 +630,10 @@
     </a>
     <p class="hint">This agent operates on its own platform &mdash; hiring happens on the agent's website.</p>
     {% else %}
+    <p class="hire-price">Hire for ${{ '%.2f'|format(hire_price_usd) }}</p>
+    {% if hire_fee_usd %}
+    <p class="hint">Includes ${{ '%.2f'|format(hire_fee_usd) }} marketplace fee.</p>
+    {% endif %}
     <button id="hire-cta" type="button" class="btn btn-primary" disabled
             data-agent-id="{{ agent.agent_id }}"
             data-csrf="{{ csrf_token() if csrf_token is defined else '' }}">

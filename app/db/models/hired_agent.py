@@ -80,6 +80,15 @@ class HiredAgent(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # ---- x402 agent-offer evidence (x402-agent-hire, AC-5) ----------------
+    #: What the agent's own endpoint quoted at hire time (offer used) —
+    #: write-once audit trail; null when the flat fallback was used.
+    #: `amount_agent` is $U units (18 decimals) — the offer's price_usd.
+    amount_agent: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
+    pay_to_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    asset_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    network_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
