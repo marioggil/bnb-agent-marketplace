@@ -287,3 +287,32 @@ All design decisions are resolved. Add new decisions here as the product evolves
 | D11 | **Category taxonomy** | ✅ 10 categories + `other` accepted from `docs/category-study.md` (2026-08-26 — **source of truth** for the taxonomy). Signal priority: termix source category → offchain tags → x402 → skill/protocol hints → `other`. Hero renders all 10 cards (2×5 grid `≥1024px`, horizontal scroll below). Sync: `sdd/doc-refresh` |
 
 Roadmap (post-hackathon): full marketing landing + stepper, wallet risk flags (T2), recommendation model (T3, Mayari), logo delivery.
+## Score architecture v2
+
+The marketplace exposes three independent sub-signals on each agent; together they
+form the trust picture surfaced in the detail-page `Trust & Compliance` block.
+
+- **`activity_score`** is the canonical pillar: `0.60 × probe + 0.40 × track_record`,
+  computed by `app/services/agent_score.py::composite_score` and materialized into
+  `agent_cache.activity_score` (Numeric 5,2). This score is the canonical display
+  value and is never mutated by either of the two derived signals below.
+- **`compliance_penalty`** is a derived column on `agent_cache` (Numeric 5,2, default
+  0) populated nightly by the OFAC mirror orchestrator
+  (`app/services/compliance_refresh.py::refresh_agent_compliance_flags`). The
+  displayed activity score subtracts this value, clipped at 0.
+- **`wallet_activity_score`** is computed at read time by
+  `app/services/wallet_activity.py::compute_wallet_activity_score` from the creator
+  and owner wallets' 90-day on-chain activity (`onchain_agent_events`). It is NOT
+  written back to `agent_cache`; it surfaces as a sub-score in the agent detail
+  page and (in a future change) as a derived field on the ranking endpoint.
+
+**Listing-page invariant**: listing pages MUST NOT aggregate wallet signals.
+The N+1 cost of `fetch_wallet_signals` per agent makes per-row wallet enrichment
+unaffordable at scale; the wallet signal is a per-agent detail signal only.
+Ranking endpoints rank on `displayed_activity_score` (the activity minus the
+compliance penalty) and omit wallet signals from their minimal projection;
+clients follow up with the per-agent `/score` endpoint when wallet detail is
+required.
+
+The `Trust & Compliance` block on the detail page wraps the OFAC banner, the
+wallet activity chip, and the activity score card in that fixed order.

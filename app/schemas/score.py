@@ -98,11 +98,44 @@ class CompareOut(BaseModel):
     agents: list[CompareAgentOut]
 
 
+class ScoreOutMinimal(BaseModel):
+    """GET /api/agents/score item — ranking projection (score-integration AC-3).
+
+    Deliberately a sibling (not subclass) of `ScoreOut` so a future additive
+    field on `ScoreOut` cannot silently leak into the ranking payload. The
+    seven fields below are the only fields the response carries:
+    `chain`, `token`, `name`, `activity_score`, `compliance_penalty`,
+    `displayed_activity_score`, `creator_is_owner`. Wallet signals +
+    pillars + breakdown are intentionally absent — clients needing them
+    follow up with the per-agent `GET /api/agents/{chain}/{token}/score`.
+
+    `displayed_activity_score` is the canonical user-facing value
+    `max(0, activity_score - compliance_penalty)`; the route computes it
+    via portable `CASE WHEN a IS NULL THEN NULL WHEN a - b > 0 THEN a - b ELSE 0 END`.
+    `creator_is_owner` lives in `agent_compliance_flags` — the route issues
+    a `LEFT JOIN` to fill it (defaults to `False` when the row is absent).
+
+    `activity_score` is nullable to match `AgentCache.activity_score`
+    (agents that have never been probed carry a NULL composite); when
+    NULL the corresponding `displayed_activity_score` is also NULL so the
+    DESC NULLS LAST sort places that row last (spec AC-2).
+    """
+
+    chain: int
+    token: int
+    name: str | None = None
+    activity_score: Decimal | None = None
+    compliance_penalty: float = 0.0
+    displayed_activity_score: float | None = 0.0
+    creator_is_owner: bool = False
+
+
 __all__ = [
     "CompareAgentOut",
     "CompareOut",
     "Pillars",
     "ProbePillar",
     "ScoreOut",
+    "ScoreOutMinimal",
     "TrackRecordPillar",
 ]

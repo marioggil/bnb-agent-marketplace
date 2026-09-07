@@ -174,33 +174,45 @@
   <!-- Local activity score (agent-score U2): locally-computed composite
        (0.60×probe + 0.40×track record) with per-dimension breakdown reusing
        the score_dimensions markup, plus the latest A2A probe snapshot. -->
+  <section class="trust-compliance">
+    {# Phase 3 — OFAC block/warning, security-critical, always first. #}
+    {% if creator_flagged and owner_flagged %}
+    <p class="ofac-block" role="alert">OFAC: hiring blocked — Hiring is disabled while OFAC compliance is unresolved for this agent.</p>
+    {% elif creator_flagged %}
+    <p class="ofac-warn" role="status">OFAC warning: creator address flagged. Hiring remains enabled.</p>
+    {% elif owner_flagged %}
+    <p class="ofac-warn" role="status">OFAC warning: owner address flagged. Hiring remains enabled.</p>
+    {% endif %}
+
+      {# Phase wallet-activity — additive chip (spec AC-8). Falls back to
+         `Wallet activity: n/a/100` on aggregation failure. `creator == owner`
+         label renders when addresses match.
+      #}
+      <div class="wallet-activity-chip">
+        <span class="badge category">
+          Wallet activity:
+          {% if wallet_activity_score is not none %}
+            {{ '%.2f'|format(wallet_activity_score) }}/100
+          {% else %}
+            n/a/100
+          {% endif %}
+          {% if wallet_activity_breakdown is not none %}
+            (creator {{ '%.2f'|format(wallet_activity_breakdown.creator) }},
+             owner {{ '%.2f'|format(wallet_activity_breakdown.owner) }},
+             track {{ '%.2f'|format(wallet_activity_breakdown.track_record) }})
+          {% endif %}
+          {% if creator_is_owner %}
+            <span class="badge">creator == owner</span>
+          {% endif %}
+        </span>
+      </div>
+
   <section class="agent-profile activity-score-card" id="activity-score">
     <h2>Activity score</h2>
     <p class="activity-score-value">{{ displayed_activity_score or 'n/a' }}/100</p>
     {% if compliance_penalty is defined and compliance_penalty > 0 %}
     <span class="badge risk">⚠ Compliance: −{{ '%.2f'|format(compliance_penalty) }} pts</span>
     {% endif %}
-    {# Phase wallet-activity — additive chip (spec AC-8). One new class
-       `.wallet-activity-chip` for flex layout; existing `.badge category`
-       is reused. Falls back to `Wallet activity: n/a/100` on aggregation
-       failure. `creator == owner` label renders when addresses match.
-    #}
-    <div class="wallet-activity-chip">
-      <span class="badge category">
-        Wallet activity:
-        {% if wallet_activity_score is not none %}
-          {{ '%.2f'|format(wallet_activity_score) }}/100
-        {% else %}
-          n/a/100
-        {% endif %}
-        {% if wallet_activity_breakdown is not none %}
-          (creator {{ '%.2f'|format(wallet_activity_breakdown.creator) }},
-           owner {{ '%.2f'|format(wallet_activity_breakdown.owner) }},
-           track {{ '%.2f'|format(wallet_activity_breakdown.track_record) }})
-        {% endif %}
-      </span>
-      {% if creator_is_owner_chip %}<span class="badge category">creator == owner</span>{% endif %}
-    </div>
     {% if local_breakdown %}
     <dl>
       <dt>Breakdown</dt>
@@ -230,6 +242,7 @@
       <dd>{% if latest_probe.probed_at %}{{ latest_probe.probed_at.strftime('%Y-%m-%d %H:%M UTC') }}{% else %}—{% endif %}</dd>
     </dl>
     {% endif %}
+  </section>
   </section>
 
   <!-- Upstream score breakdown (8004scan `scores` payload): the six
@@ -600,13 +613,8 @@
        client-side handler in `app/static/js/payment.js` already short-
        circuits on `cta.disabled`, so no JS change is required. #}
     {% set both_flags = (creator_flagged and owner_flagged) %}
-    {% if creator_flagged and owner_flagged %}
-    <p class="ofac-block" role="alert">OFAC: hiring blocked — Hiring is disabled while OFAC compliance is unresolved for this agent.</p>
-    {% elif creator_flagged %}
-    <p class="ofac-warn" role="status">OFAC warning: creator address flagged. Hiring remains enabled.</p>
-    {% elif owner_flagged %}
-    <p class="ofac-warn" role="status">OFAC warning: owner address flagged. Hiring remains enabled.</p>
-    {% endif %}
+    {# Phase 1b — OFAC compliance banner moved to .trust-compliance section
+       above this CTA. See design §5. #}
     <button id="hire-cta" type="button" class="btn btn-primary"{% if both_flags %} disabled aria-disabled="true"{% endif %}
             data-agent-id="{{ agent.agent_id }}"
             data-agent-url="{{ agent.agent_url or '' }}"
