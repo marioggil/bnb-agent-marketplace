@@ -99,17 +99,19 @@ async def test_agent_detail_renders_hire_panel(client, db):
 
 # Hired-by-you panel: a signed-in user with a paid hire sees the history and
 # the "Hire again" CTA; anonymous users see neither.
-async def test_agent_detail_shows_hired_panel_and_hire_again(client, db):
+async def test_agent_detail_shows_hired_panel_and_hire_again(client, db, respx_mock):
     from decimal import Decimal
 
+    from app.config import get_settings
     from app.db.models.hired_agent import HiredAgent, HiredStatus
-    from tests.conftest import _sign_in
+    from tests.conftest import _sign_in, payai_header
 
     aid = await _seed_one(db, 1, name="Alpha")
     agent = await db.scalar(select(AgentCache).where(AgentCache.agent_id == aid))
     assert agent is not None
     agent.agent_wallet = "0x" + "77" * 20
     agent.x402_supported = True
+    agent.a2a_endpoint = "https://example.com/a2a/card"
     await db.commit()
 
     address, cookie = _sign_in(client)
@@ -117,6 +119,16 @@ async def test_agent_detail_shows_hired_panel_and_hire_again(client, db):
     # user row), then flip it to PAID in this session to render the panel.
     from app.services.auth import issue_csrf
 
+    settings = get_settings()
+    rail = settings.x402_rail_for(8453)
+    respx_mock.get("https://example.com/a2a/card").respond(
+        402,
+        headers={
+            "payment-required": payai_header(
+                asset=rail.token_address, network="eip155:8453"
+            )
+        },
+    )
     create = client.post(
         "/api/hires",
         json={"agent_id": aid},

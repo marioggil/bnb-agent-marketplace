@@ -210,16 +210,18 @@ def _parse_offer_response(resp: httpx.Response) -> AgentOffer | None:
 
 
 def is_supported_offer(offer: AgentOffer, settings: Any) -> bool:
-    """True when the offer's asset+network match the marketplace rail (R3/D-6).
+    """True when the offer's network/asset match a rail-map chain (R8).
 
-    Single rail, v1 (multi-asset is out of scope): asset must be the pinned $U
-    for the configured chain AND network must be `eip155:<configured chain id>`.
-    Asset comparison is case-insensitive (checksummed either way).
+    Network must be eip155:<chain_id> with the chain in `X402_RAIL_MAP` and
+    the asset must equal that rail's `token_address` (case-insensitive).
+    Solana / non-EVM / out-of-map chains return False (disabled UI / 503).
     """
-    return (
-        offer.network == f"eip155:{settings.x402_chain_id}"
-        and offer.asset.lower() == settings.x402_u_token_address.lower()
-    )
+    m = re.match(r"^eip155:(\d+)$", offer.network or "")
+    if not m:
+        return False
+    rail = settings.x402_rail_for(int(m.group(1)))
+    return rail is not None and offer.asset.lower() == rail.token_address.lower()
+
 
 
 __all__ = [

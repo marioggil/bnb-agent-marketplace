@@ -6,7 +6,6 @@
 <span class="hire-offer-label is-enabled" data-has-offer="true"
       data-pay-to="{{ offer.pay_to or '' }}">
   Hire for ${{ '%.2f'|format(offer.price_usd) }}
-  {% if offer.fee_usd is not none %}<small class="hire-offer-fee">Includes ${{ '%.2f'|format(offer.fee_usd) }} marketplace fee</small>{% endif %}
 </span>
 {% else %}
 <span class="hire-offer-label is-disabled" data-has-offer="false"

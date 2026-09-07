@@ -22,6 +22,7 @@ from app.db.models.hired_agent import HiredAgent, HiredStatus
 from app.db.models.user import User
 from app.db.session import get_db
 from app.errors import (
+    AgentOfferUnavailable,
     AlreadyPaid,
     BroadcastFailed,
     ChallengeExpired,
@@ -29,6 +30,7 @@ from app.errors import (
     NoPayTo,
     NotFound,
     PaymentGatewayUnconfigured,
+    UnknownRail,
 )
 from app.schemas.hired import HireCreate, HireCreateOut, HireOut, HirePayOut
 from app.services.auth import get_current_user, require_csrf
@@ -48,9 +50,6 @@ from app.services.x402_client import is_supported_offer, probe_agent_offer
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/hires", tags=["hires"])
-
-#: $U has 18 decimals; amount column stores $U units, challenge needs wei.
-_WEI_PER_UNIT = Decimal(10**18)
 
 
 def get_broadcaster() -> Broadcaster:
@@ -96,24 +95,28 @@ async def create_hire(
         raise NotFound(f"agent {payload.agent_id!r} not cached")
 
     settings = get_settings()
-    # x402-agent-hire (D-1/D-11): re-probe the agent's real offer at hire
-    # time (no cache). a2a_endpoint first, agent_url fallback; when the
-    # offer is available AND its asset/network match the rail, accepts[0]
-    # uses the agent's real pay_to/amount — otherwise flat fallback.
+    # x402-remove-fee-multichain (R4/Q2): re-probe the agent's real offer at
+    # hire time (no cache). a2a_endpoint first, agent_url fallback. The hire
+    # charges the offer's accepts[0] — pay_to/amount/asset/network from the
+    # offer, chain/token facts from the rail map. No flat price, no fee.
     endpoint = agent.a2a_endpoint or agent.agent_url
     offer = await probe_agent_offer(endpoint) if endpoint else None
-    use_offer = offer is not None and is_supported_offer(offer, settings)
+    if not (offer and is_supported_offer(offer, settings)):
+        raise AgentOfferUnavailable(
+            "agent offer unavailable (down or unsupported chain/asset)"
+        )
 
-    pay_to = offer.pay_to if use_offer else agent.agent_wallet
+    chain_id = int(offer.network.split(":")[1])  # eip155:<N>
+    try:
+        token_cfg = get_token_config(settings, chain_id)
+    except UnknownRail as exc:
+        raise AgentOfferUnavailable(
+            f"agent offers chain eip155:{chain_id} which has no settlement rail"
+        ) from exc
+
+    pay_to = offer.pay_to
     if not pay_to:
         raise NoPayTo("agent has no payment wallet configured (no owner fallback)")
-
-    amount = offer.price_usd if use_offer else settings.x402_default_price_usd
-    amount_wei = int(amount * _WEI_PER_UNIT)  # same conversion as today
-    fee_wallet = (settings.x402_fee_wallet or "").strip()
-    fee_wei = (
-        int(settings.x402_fee_amount_usd * _WEI_PER_UNIT) if fee_wallet else None
-    )
     now = datetime.now(tz=timezone.utc)
 
     await sweep_expired(db, user)
@@ -121,17 +124,16 @@ async def create_hire(
         address=user.address,
         agent_id=payload.agent_id,
         status=HiredStatus.PENDING,
-        amount=amount,
-        token=settings.x402_u_token_address,
+        amount=Decimal(offer.amount_wei),  # raw wei, token-agnostic (no *10**18)
+        token=token_cfg.address,
         rail=EIP3009_RAIL,
         pay_to=pay_to,
         challenge_expiry=now + timedelta(seconds=DEFAULT_TIMEOUT_SECONDS),
-        # x402-agent-hire AC-5: evidence columns populated only when the
-        # offer is used; null on the flat fallback path.
-        amount_agent=offer.price_usd if use_offer else None,
-        pay_to_agent=offer.pay_to if use_offer else None,
-        asset_agent=offer.asset if use_offer else None,
-        network_agent=offer.network if use_offer else None,
+        # AC-4: always-populated evidence from the probed offer.
+        amount_agent=offer.price_usd,  # display-only estimate (units)
+        pay_to_agent=offer.pay_to,
+        asset_agent=offer.asset,
+        network_agent=offer.network,
     )
     db.add(row)
     await db.flush()
@@ -139,11 +141,9 @@ async def create_hire(
     challenge = build_challenge(
         pay_to,
         resource_url,
-        amount_wei=amount_wei,
+        amount_wei=offer.amount_wei,  # quoted wei, no conversion
         timeout_s=DEFAULT_TIMEOUT_SECONDS,
-        chain_id=settings.x402_chain_id,
-        fee_pay_to=fee_wallet or None,
-        fee_amount_wei=fee_wei,
+        chain_id=chain_id,  # the offer's chain, not the settings chain
     )
     await db.commit()
     await db.refresh(row)
@@ -184,53 +184,46 @@ async def pay_hire(
     if hire.amount is None or not hire.pay_to:
         raise ChallengeExpired("hire has no payment data")
 
+    # Settlement chain comes from the hire's recorded offer network
+    # (eip155:<N>), not the settings chain (x402-remove-fee-multichain R6).
+    network = hire.network_agent
+    if not network:
+        raise AgentOfferUnavailable("hire has no settlement network recorded")
+    try:
+        chain_id = int(network.split(":")[1])
+        token_cfg = get_token_config(settings, chain_id)
+        rail = settings.x402_rail_for(chain_id)
+    except (IndexError, ValueError) as exc:
+        raise AgentOfferUnavailable(f"hire records malformed network {network!r}") from exc
+    except UnknownRail as exc:
+        raise AgentOfferUnavailable(
+            f"hire chain eip155:{chain_id} has no settlement rail"
+        ) from exc
+    rpc_url = rail.rpc_url  # rail-map RPC for the hire's chain
+
     decoded = decode_envelope(
         request.headers.get("X-PAYMENT") or request.headers.get("PAYMENT-SIGNATURE")
     )
-    token_cfg = get_token_config(settings, settings.x402_chain_id)
+    # No fee verify — a legacy payload.fee decodes (back-compat R9) but is
+    # ignored entirely; only the principal payment is verified.
     verify_payment(
         decoded,
-        chain_id=settings.x402_chain_id,
+        chain_id=chain_id,
         token_cfg=token_cfg,
         pay_to=hire.pay_to,
-        amount_wei=int(hire.amount * _WEI_PER_UNIT),
+        amount_wei=int(hire.amount),  # stored raw wei, token-agnostic
         payer=user.address,
         now=now,
     )
-    # Marketplace fee (model A): the same payer signs a second authorization
-    # to the configured fee wallet; both are verified before any broadcast.
-    fee_wei = None
-    if decoded.fee is not None:
-        fee_wallet = (settings.x402_fee_wallet or "").strip()
-        if not fee_wallet:
-            raise ChallengeExpired("fee payment sent but no fee wallet configured")
-        fee_wei = int(settings.x402_fee_amount_usd * _WEI_PER_UNIT)
-        verify_payment(
-            decoded.fee,
-            chain_id=settings.x402_chain_id,
-            token_cfg=token_cfg,
-            pay_to=fee_wallet,
-            amount_wei=fee_wei,
-            payer=user.address,
-            now=now,
-        )
 
     try:
-        # Fee first: if it cannot settle, the hire payment is never sent.
-        # The principal settles last so the receipt hash is the hire itself.
-        if decoded.fee is not None:
-            await broadcaster.broadcast(
-                decoded.fee,
-                token_cfg,
-                facilitator_key=settings.x402_facilitator_key,
-                rpc_url=settings.x402_rpc_url_resolved,
-                now=now,
-            )
+        # Exactly one settlement: the principal, via the rail-map RPC. No fee
+        # broadcast ever.
         result = await broadcaster.broadcast(
             decoded,
             token_cfg,
             facilitator_key=settings.x402_facilitator_key,
-            rpc_url=settings.x402_rpc_url_resolved,
+            rpc_url=rpc_url,
             now=now,
         )
     except BroadcastFailed:

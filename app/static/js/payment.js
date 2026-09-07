@@ -76,8 +76,8 @@
         }
         var hire = await create.json();
         var challenge = hire.challenge;
+        // x402-remove-fee-multichain: user pays the agent's quoted price; no fee accept.
         var accept = challenge.accepts[0];
-        var feeAccept = challenge.accepts.length > 1 ? challenge.accepts[1] : null;
 
         if (typeof window.ethereum === "undefined") {
           throw new Error("no wallet detected (window.ethereum missing)");
@@ -133,13 +133,6 @@
           signature: main.signature,
           authorization: main.authorization,
         };
-        if (feeAccept) {
-          var fee = await signPayment(feeAccept);
-          payload.fee = {
-            signature: fee.signature,
-            authorization: fee.authorization,
-          };
-        }
 
         var envelope = {
           x402Version: challenge.x402Version,

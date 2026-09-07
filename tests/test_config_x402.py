@@ -59,3 +59,17 @@ def test_facilitator_key_gates_payments(monkeypatch):
     assert _fresh().x402_payments_configured is False
     monkeypatch.setenv("X402_FACILITATOR_KEY", "0x" + "01" * 32)
     assert _fresh().x402_payments_configured is True
+
+
+# R1 — rail-map resolution: mapped chains resolve, unknowns are None
+# (x402-remove-fee-multichain; x402_rail_for is the lenient support path).
+def test_x402_rail_for_resolves_map_chains(monkeypatch):
+    s = _fresh()
+    base = s.x402_rail_for(8453)
+    assert base is not None
+    assert base.rpc_url == "https://mainnet.base.org"
+    assert base.token_address == "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    assert s.x402_rail_for(56) is not None
+    assert s.x402_rail_for(97) is not None
+    assert s.x402_rail_for(84532) is None
+    assert s.x402_rail_for(999999) is None

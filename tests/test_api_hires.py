@@ -89,9 +89,17 @@ def _supported_header() -> str:
     )
 
 
-# T14 RED — offer available: accepts[0] uses the agent's real payTo/amount,
-# accepts[1] is the marketplace fee, evidence columns are populated.
-async def test_create_hire_uses_agent_offer_when_available(
+# T8 RED — offer-driven create: accepts[0] from the offer, exactly one accept
+# (no fee), evidence persisted. Base 8453 USDC offer (x402-remove-fee-multichain).
+_BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+_BASE_CHAIN = 8453
+
+
+def _base_usdc_header() -> str:
+    return payai_header(asset=_BASE_USDC, network=f"eip155:{_BASE_CHAIN}")
+
+
+async def test_create_hire_probes_offer_and_sets_evidence(
     client, db, respx_mock, monkeypatch
 ):
     monkeypatch.setenv("X402_FEE_WALLET", "0x" + "88" * 20)
@@ -100,80 +108,94 @@ async def test_create_hire_uses_agent_offer_when_available(
         address, cookie = _sign_in(client)
         aid = await _seed_with_endpoint(db, 7, endpoint=_A2A_ENDPOINT)
         respx_mock.get(_A2A_ENDPOINT).respond(
-            402, headers={"payment-required": _supported_header()}
+            402, headers={"payment-required": _base_usdc_header()}
         )
         r = client.post("/api/hires", json={"agent_id": aid}, headers=_ch(cookie))
         assert r.status_code == 201, r.text
         body = r.json()
         accepts = body["challenge"]["accepts"]
-        # AC-4: real offer values for accepts[0].
+        # AC-3/AC-2: quote comes from the offer, single accept, no fee.
+        assert len(accepts) == 1
         assert accepts[0]["payTo"] == _OFFER_PAYTO
         assert int(accepts[0]["amount"]) == _OFFER_AMOUNT_WEI
-        # AC-6: fee still applies on top as accepts[1].
-        assert len(accepts) == 2
-        assert accepts[1]["payTo"] == "0x" + "88" * 20
-        assert int(accepts[1]["amount"]) == int(0.03 * 10**18)
-        # Evidence echo in the response (T19 fills the schema).
+        assert accepts[0]["network"] == f"eip155:{_BASE_CHAIN}"
+        assert accepts[0]["asset"] == _BASE_USDC
+        assert accepts[0]["extra"]["name"] == "USD Coin"
+        assert accepts[0]["extra"]["version"] == "2"
+        # AC-4: evidence echo in the response.
         assert body["pay_to_agent"] == _OFFER_PAYTO
         assert body["amount_agent"] is not None
-        assert body["asset_agent"] == get_settings().x402_u_token_address
-        assert body["network_agent"] == f"eip155:{get_settings().x402_chain_id}"
+        assert body["asset_agent"] == _BASE_USDC
+        assert body["network_agent"] == f"eip155:{_BASE_CHAIN}"
+        # AC-3/AC-4 (amount semantics): raw wei, token-agnostic, no *10**18.
+        assert Decimal(body["amount"]) == Decimal(_OFFER_AMOUNT_WEI)
 
-        # AC-5: evidence columns persisted on the row.
+        # AC-4/AC-5: evidence columns persisted on the row.
         row = await db.scalar(select(HiredAgent).where(HiredAgent.agent_id == aid))
         assert row is not None
         assert row.pay_to_agent == _OFFER_PAYTO
-        assert int(row.amount_agent * 10**18) == _OFFER_AMOUNT_WEI
-        assert row.asset_agent == get_settings().x402_u_token_address
-        assert row.network_agent == f"eip155:{get_settings().x402_chain_id}"
+        assert row.amount_agent == Decimal(_OFFER_AMOUNT_WEI) / Decimal(10**18)
+        assert row.asset_agent == _BASE_USDC
+        assert row.network_agent == f"eip155:{_BASE_CHAIN}"
+        assert row.amount == Decimal(_OFFER_AMOUNT_WEI)
+        assert row.token == _BASE_USDC
+        assert row.pay_to == _OFFER_PAYTO
     finally:
         _settings_cache.cache_clear()
 
 
-# T16 RED — no offer (no endpoint): flat price + agent wallet, evidence None.
-async def test_create_hire_falls_back_to_flat_without_offer(client, db, respx_mock):
+# T10 RED — no offer / unsupported offer → 503 agent_offer_unavailable (R4/Q2).
+# The flat-price fallback is gone: no offer (endpoint down/absent) is an error.
+async def test_create_hire_agent_offer_unavailable_503(client, db, respx_mock):
+    # No endpoint at all → probe is None → 503, no hire row.
     address, cookie = _sign_in(client)
     aid = await _seed_with_endpoint(db, 8, endpoint=None)
     r = client.post("/api/hires", json={"agent_id": aid}, headers=_ch(cookie))
-    assert r.status_code == 201, r.text
-    body = r.json()
-    accepts = body["challenge"]["accepts"]
-    assert accepts[0]["payTo"] == "0x" + "77" * 20  # agent wallet
-    assert int(accepts[0]["amount"]) == int(Decimal("1.00") * 10**18)  # flat
-    assert body["amount_agent"] is None
-    assert body["pay_to_agent"] is None
-    assert body["asset_agent"] is None
-    assert body["network_agent"] is None
+    assert r.status_code == 503, r.text
+    assert r.json()["error"]["code"] == "agent_offer_unavailable"
+    assert "challenge" not in r.json()
 
-
-# T16 — probe 500 (unreachable) → flat fallback, evidence None.
-async def test_create_hire_falls_back_to_flat_when_probe_unreachable(
-    client, db, respx_mock
-):
-    address, cookie = _sign_in(client)
-    aid = await _seed_with_endpoint(db, 9, endpoint=_A2A_ENDPOINT)
+    # Endpoint unreachable (500) → probe None → 503.
+    aid2 = await _seed_with_endpoint(db, 9, endpoint=_A2A_ENDPOINT)
     respx_mock.get(_A2A_ENDPOINT).respond(500)
+    r2 = client.post("/api/hires", json={"agent_id": aid2}, headers=_ch(cookie))
+    assert r2.status_code == 503, r2.text
+    assert r2.json()["error"]["code"] == "agent_offer_unavailable"
+
+
+# T10 — an offer on a chain outside the rail map (eip155:84532) is unsupported
+# → 503 agent_offer_unavailable; no hire row, no flat price.
+async def test_create_hire_unsupported_offer_503(client, db, respx_mock):
+    address, cookie = _sign_in(client)
+    aid = await _seed_with_endpoint(db, 10, endpoint=_A2A_ENDPOINT)
+    respx_mock.get(_A2A_ENDPOINT).respond(
+        402, headers={"payment-required": payai_header()}  # raw fixture: eip155:84532
+    )
     r = client.post("/api/hires", json={"agent_id": aid}, headers=_ch(cookie))
-    assert r.status_code == 201, r.text
-    body = r.json()
-    assert body["challenge"]["accepts"][0]["payTo"] == "0x" + "77" * 20
-    assert body["amount_agent"] is None
-    assert body["pay_to_agent"] is None
+    assert r.status_code == 503, r.text
+    assert r.json()["error"]["code"] == "agent_offer_unavailable"
+    row = await db.scalar(select(HiredAgent).where(HiredAgent.agent_id == aid))
+    assert row is None
 
 
 # R5 — happy POST /api/hires returns 201 with status=pending + x402 data.
-async def test_hire_happy_returns_pending(client, db):
+# Offer-driven now: seed a supported rail offer (BSC testnet $U, eip155:97).
+async def test_hire_happy_returns_pending(client, db, respx_mock):
     address, cookie = _sign_in(client)
-    aid = await _seed(db, 1)
+    aid = await _seed_with_endpoint(db, 1, endpoint=_A2A_ENDPOINT)
+    respx_mock.get(_A2A_ENDPOINT).respond(
+        402, headers={"payment-required": _supported_header()}
+    )
     r = client.post("/api/hires", json={"agent_id": aid}, headers=_ch(cookie))
-    assert r.status_code == 201
+    assert r.status_code == 201, r.text
     body = r.json()
     assert body["address"].lower() == address.lower() and body["agent_id"] == aid
     assert body["status"] == "pending" and body["tx_hash"] is None
-    # FU-2: challenge + payment metadata (spec X1/H1).
-    assert body["challenge"]["accepts"][0]["payTo"] == "0x" + "77" * 20
-    assert body["pay_to"] == "0x" + "77" * 20
-    assert body["rail"] == "eip3009" and float(body["amount"]) == 1.0
+    # FU-2: challenge + payment metadata (spec X1/H1) — quoted wei is echoed.
+    assert body["challenge"]["accepts"][0]["payTo"] == _OFFER_PAYTO
+    assert body["pay_to"] == _OFFER_PAYTO
+    assert body["rail"] == "eip3009"
+    assert Decimal(body["amount"]) == Decimal(_OFFER_AMOUNT_WEI)
 
 
 # R6 — unknown agent → 404.

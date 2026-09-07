@@ -37,7 +37,7 @@ from eth_account import Account
 from eth_account.messages import encode_typed_data
 from eth_utils.crypto import keccak
 
-from app.config import U_TOKEN_NAME, U_TOKEN_VERSION, get_settings
+from app.config import get_settings
 from app.errors import (
     AmountMismatch,
     BroadcastFailed,
@@ -45,6 +45,7 @@ from app.errors import (
     InvalidEnvelope,
     PayToMismatch,
     SignatureMismatch,
+    UnknownRail,
     UnsupportedRail,
     ValidationError,
     WrongChain,
@@ -163,11 +164,20 @@ def _chain_id_of(envelope: dict[str, Any]) -> int | None:
 
 
 def get_token_config(settings: Any, chain_id: int) -> TokenConfig:
-    """$U config for the chain: pinned address (D2) + EIP-712 domain."""
+    """Rail-map token config for the chain (R2); unknown chain raises.
+
+    Resolves `settings.x402_rail_for(chain_id)` and returns the rail's
+    address + EIP-712 domain facts. A chain not in the static rail map raises
+    `UnknownRail` (R3) — the strict settlement path; the support check
+    (`x402_rail_for` returning None) is the lenient UI path.
+    """
+    rail = settings.x402_rail_for(chain_id)
+    if rail is None:
+        raise UnknownRail(f"chain eip155:{chain_id} has no settlement rail")
     return TokenConfig(
-        address=settings.x402_u_token_address,
-        name=U_TOKEN_NAME,
-        version=U_TOKEN_VERSION,
+        address=rail.token_address,
+        name=rail.token_name,
+        version=rail.token_version,
     )
 
 
@@ -178,50 +188,40 @@ def build_challenge(
     amount_wei: int,
     timeout_s: int = DEFAULT_TIMEOUT_SECONDS,
     chain_id: int,
-    fee_pay_to: str | None = None,
-    fee_amount_wei: int | None = None,
 ) -> dict[str, Any]:
     """402 challenge body, frozen to D4: exact scheme, eip155:<chain_id>,
-    $U/eip3009, payTo, amount wei str, window 1..480 (default 300).
+    rail token/eip3009, payTo, amount wei str, window 1..480 (default 300).
 
-    When `fee_pay_to` + `fee_amount_wei` are given, a second accept is
-    appended for the marketplace fee (model-A commission) so the client
-    signs both authorizations.
+    Exactly one accept (accepts[0]); the marketplace-fee second accept is
+    removed. Token facts come from the rail map via `get_token_config` for
+    the offer's chain.
     """
     _validate_address(pay_to, "pay_to")
     if not isinstance(amount_wei, int) or amount_wei < 0:
         raise ValidationError("amount_wei must be a non-negative integer")
     if not 1 <= timeout_s <= MAX_TIMEOUT_SECONDS:
         raise ValidationError(f"maxTimeoutSeconds must be in 1..{MAX_TIMEOUT_SECONDS}")
-    settings = get_settings()
+    token_cfg = get_token_config(get_settings(), chain_id)
 
-    def _accept(to: str, amount: int) -> dict[str, Any]:
-        return {
-            "scheme": "exact",
-            "network": f"eip155:{chain_id}",
-            "asset": settings.x402_u_token_address,
-            "payTo": to,
-            "amount": str(amount),
-            "maxTimeoutSeconds": timeout_s,
-            "extra": {
-                "name": U_TOKEN_NAME,
-                "version": U_TOKEN_VERSION,
-                "assetTransferMethod": EIP3009_RAIL,
-            },
-        }
-
-    accepts = [_accept(pay_to, amount_wei)]
-    if fee_pay_to and fee_amount_wei is not None:
-        if fee_amount_wei < 0:
-            raise ValidationError("fee_amount_wei must be a non-negative integer")
-        _validate_address(fee_pay_to, "fee_pay_to")
-        accepts.append(_accept(fee_pay_to, fee_amount_wei))
+    accept = {
+        "scheme": "exact",
+        "network": f"eip155:{chain_id}",
+        "asset": token_cfg.address,
+        "payTo": pay_to,
+        "amount": str(amount_wei),
+        "maxTimeoutSeconds": timeout_s,
+        "extra": {
+            "name": token_cfg.name,
+            "version": token_cfg.version,
+            "assetTransferMethod": EIP3009_RAIL,
+        },
+    }
 
     return {
         "x402Version": 2,
         "error": "payment required",
         "resource": {"url": resource_url},
-        "accepts": accepts,
+        "accepts": [accept],
     }
 
 
