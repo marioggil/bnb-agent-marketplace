@@ -28,6 +28,8 @@ from app.services.client_8004scan import _retry_after_seconds
 logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://platform-backend.prod.termix.live/api/v1/a2a/agents"
+#: Marketplace (non-A2A) API host, used for the agent's /services listings.
+_SERVICES_BASE_URL = "https://platform-backend.prod.termix.live/api/v1/agents"
 _TIMEOUT = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
 
 #: Max card-GET attempts when the upstream answers 429 (D10).
@@ -118,6 +120,31 @@ async def fetch_termix_card(token_id: int) -> dict[str, Any] | None:
     except Exception:
         logger.debug("Termix card fetch failed for token_id=%s", token_id, exc_info=True)
         return None
+
+
+
+async def fetch_termix_services(internal_id: str) -> list[dict[str, Any]]:
+    """Fetch the Termix service listings for the agent's internal id.
+
+    `internal_id` is the Termix card ``id`` (NOT the ERC-8004 token_id);
+    it comes from `fetch_termix_card(token_id)["id"]`. The endpoint is
+    `/api/v1/agents/{internal_id}/services`.
+
+    Returns a list of listing dicts (each has `title`, `basePrice`,
+    `currency`, `packages`, ...). Returns ``[]`` on any failure so the
+    page degrades to "no services" — never raises.
+    """
+    url = f"{_SERVICES_BASE_URL}/{internal_id}/services"
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
+            items = data.get("items") if isinstance(data, dict) else None
+            return items if isinstance(items, list) else []
+    except Exception:
+        logger.debug("Termix services fetch failed for internal_id=%s", internal_id, exc_info=True)
+        return []
 
 
 async def probe_termix_card(token_id: int) -> dict[str, Any]:

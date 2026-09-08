@@ -1060,3 +1060,99 @@ async def test_agent_detail_offchain_services_without_termix_card(
     assert _SVC_TPL not in body
     # And it must not fabricate a token_id URL (that would 404).
     assert f"/agents/{token_id}/services" not in body
+
+
+# ---------------------------------------------------------------------------
+# Termix pricing block: when a Termix agent has /services listings, show a
+# Pricing block with prices + a link to agent.family/listing?id={idTermix}.
+# ---------------------------------------------------------------------------
+
+
+async def test_agent_detail_termix_pricing_block(client, db, monkeypatch):
+    """A Termix agent with service listings renders a Pricing block: title,
+    base price + currency, packages, and a View on TermiX link to
+    agent.family/listing?id={idTermix}."""
+    token_id = 410
+    await _seed_termix_agent(db, token_id)
+    await db.commit()
+
+    async def _fake_card(_token_id: int):
+        return {"id": "cmtmINTERNAL", "agentTokenId": str(token_id), "status": "UNBOUND"}
+
+    async def _fake_services(_internal_id: str):
+        return [
+            {
+                "id": "cmtnSVC1",
+                "title": "Meme analyst",
+                "basePrice": "29",
+                "currency": "USDC",
+                "deliveryDays": 3,
+                "packages": [
+                    {"id": "basic", "name": "Basic", "price": "29", "scope": "Standard scope"},
+                    {"id": "premium", "name": "Premium", "price": "13", "scope": "Full scope"},
+                ],
+            }
+        ]
+
+    monkeypatch.setattr("app.services.client_termix.fetch_termix_card", _fake_card)
+    monkeypatch.setattr("app.services.client_termix.fetch_termix_services", _fake_services)
+
+    body = client.get(f"/agents/56/{token_id}").text
+
+    # Pricing block present with the service title and base price.
+    assert "Pricing" in body
+    assert "Meme analyst" in body
+    assert "29" in body
+    assert "USDC" in body
+    # Link to the Termix platform using the internal id.
+    assert "https://www.agent.family/listing?id=cmtmINTERNAL" in body
+
+
+async def test_agent_detail_no_termix_pricing_without_services(client, db, monkeypatch):
+    """When the Termix agent has no service listings, no Pricing block with
+    prices is rendered (the page stays clean)."""
+    token_id = 411
+    await _seed_termix_agent(db, token_id)
+    await db.commit()
+
+    async def _fake_card(_token_id: int):
+        return {"id": "cmtmINTERNAL", "agentTokenId": str(token_id), "status": "UNBOUND"}
+
+    async def _fake_services_empty(_internal_id: str):
+        return []
+
+    monkeypatch.setattr("app.services.client_termix.fetch_termix_card", _fake_card)
+    monkeypatch.setattr("app.services.client_termix.fetch_termix_services", _fake_services_empty)
+
+    body = client.get(f"/agents/56/{token_id}").text
+    # No listing price / no Termix pricing link with prices.
+    assert "USDC" not in body
+    assert "https://www.agent.family/listing?id=" not in body
+
+
+# ---------------------------------------------------------------------------
+# Termix agents hire on the Termix platform, not in the marketplace: the
+# marketplace hire-panel (Hire this agent) must be hidden for Termix agents.
+# ---------------------------------------------------------------------------
+
+
+async def test_agent_detail_hides_hire_panel_for_termix(client, db, monkeypatch):
+    """A Termix agent does not render the marketplace hire-panel; its hiring
+    happens on the Termix platform."""
+    token_id = 412
+    await _seed_termix_agent(db, token_id)
+    await db.commit()
+
+    async def _fake_card(_token_id: int):
+        return {"id": "cmtmINTERNAL", "agentTokenId": str(token_id), "status": "UNBOUND"}
+
+    async def _fake_services(_internal_id: str):
+        return []
+
+    monkeypatch.setattr("app.services.client_termix.fetch_termix_card", _fake_card)
+    monkeypatch.setattr("app.services.client_termix.fetch_termix_services", _fake_services)
+
+    body = client.get(f"/agents/56/{token_id}").text
+    # The marketplace "Hire this agent" panel must NOT be present for Termix.
+    assert "Hire this agent" not in body
+    assert 'id="hire-cta"' not in body

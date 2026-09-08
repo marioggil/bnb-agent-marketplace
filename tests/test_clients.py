@@ -7,10 +7,11 @@ import pytest
 
 from app.services.client_bscscan import U_TOKEN_MAINNET, AlchemyOnchainClient
 from app.services.client_evoevo import fetch_evoevo_card
-from app.services.client_termix import fetch_termix_card
+from app.services.client_termix import fetch_termix_card, fetch_termix_services
 
 EVOEVO_BASE = "https://api.evoevo.ai/agents"
 TERMIX_BASE = "https://platform-backend.prod.termix.live/api/v1/a2a/agents"
+TERMIX_SERVICES_BASE = "https://platform-backend.prod.termix.live/api/v1/agents"
 ALCHEMY_RPC_BASE = "https://bnb-mainnet.g.alchemy.com/v2"
 
 
@@ -183,3 +184,58 @@ async def test_alchemy_get_hire_stats_filters_dust():
     assert stats["total_hires"] == 1  # Only one sender above min
     assert stats["total_volume"] == "1"
     assert len(stats["unique_senders"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Termix /services (listings with prices)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+async def test_fetch_termix_services_success(respx_mock):
+    respx_mock.get(f"{TERMIX_SERVICES_BASE}/cmtmXXX/services").respond(
+        200,
+        json={
+            "items": [
+                {
+                    "id": "cmtnwvt8m6750wr011yiwnwzd",
+                    "title": "Top-tier meme analyst",
+                    "basePrice": "29",
+                    "currency": "USDC",
+                    "deliveryDays": 3,
+                    "packages": [
+                        {"id": "basic", "name": "Basic", "price": "29", "scope": "Standard scope"},
+                        {"id": "premium", "name": "Premium", "price": "13", "scope": "Full scope"},
+                    ],
+                }
+            ]
+        },
+    )
+    result = await fetch_termix_services("cmtmXXX")
+    assert result is not None
+    assert len(result) == 1
+    assert result[0]["basePrice"] == "29"
+    assert result[0]["currency"] == "USDC"
+    assert len(result[0]["packages"]) == 2
+
+
+@pytest.mark.anyio
+async def test_fetch_termix_services_empty_items(respx_mock):
+    respx_mock.get(f"{TERMIX_SERVICES_BASE}/cmtmXXX/services").respond(200, json={"items": []})
+    result = await fetch_termix_services("cmtmXXX")
+    assert result == []
+
+
+@pytest.mark.anyio
+async def test_fetch_termix_services_404_returns_empty(respx_mock):
+    respx_mock.get(f"{TERMIX_SERVICES_BASE}/cmtmXXX/services").respond(404)
+    result = await fetch_termix_services("cmtmXXX")
+    assert result == []
+
+
+@pytest.mark.anyio
+async def test_fetch_termix_services_network_error_returns_empty(respx_mock):
+    respx_mock.get(f"{TERMIX_SERVICES_BASE}/cmtmXXX/services").mock(
+        side_effect=httpx.ConnectError("refused")
+    )
+    result = await fetch_termix_services("cmtmXXX")
+    assert result == []

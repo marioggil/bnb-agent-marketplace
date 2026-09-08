@@ -857,10 +857,17 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
     mcp_info: dict[str, Any] | None = None
 
     platform_name = profile.get("platform")
+    termix_internal_id: str | None = None
+    termix_services: list[dict[str, Any]] = []
     if platform_name == "Termix":
-        from app.services.client_termix import fetch_termix_card
+        from app.services.client_termix import fetch_termix_card, fetch_termix_services
 
         termix_card = await fetch_termix_card(token_id)
+        # The card exposes the internal Termix id; use it to fetch the
+        # agent's /services listings (which carry prices).
+        if termix_card and termix_card.get("id"):
+            termix_internal_id = termix_card.get("id")
+            termix_services = await fetch_termix_services(termix_internal_id)
     elif platform_name == "EvoEvo":
         from app.services.client_evoevo import fetch_evoevo_card
 
@@ -1095,6 +1102,12 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             "escrow_job_expiry_seconds": settings.erc8183_job_expiry_seconds,
             "profile": profile,
             "termix_card": termix_card,
+            "termix_internal_id": termix_internal_id,
+            "termix_services": termix_services,
+            "termix_listing_url": (
+                f"https://www.agent.family/listing?id={termix_internal_id}"
+                if termix_internal_id else None
+            ),
             "evoevo_card": evoevo_card,
             "mcp_info": mcp_info,
             "onchain_stats": onchain_stats,
