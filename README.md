@@ -2,8 +2,9 @@
 
 A server-rendered BSC agent marketplace built with **FastAPI + PostgreSQL + HTMX**.
 It mirrors the public [8004scan](https://8004scan.io) index, exposes a minimal
-wallet-nonce auth (EIP-191 `personal_sign`), ships an x402 payment rail
-(hiring agents for $U), and runs an on-chain indexer for $U transfers.
+wallet-nonce auth (EIP-191 `personal_sign`), ships two payment rails for
+hiring agents in $U — an **x402 (B402)** rail and an **ERC-8183 job escrow**
+— and runs an on-chain indexer for $U transfers.
 
 The Node.js scripts in the repo root (`stats.mjs`, `agents-bsc.mjs`,
 `agent-detail.mjs`, `env.mjs`) stay as a **field-source-of-truth** reference for
@@ -25,7 +26,7 @@ the upstream 8004scan API. They are not part of the running app.
 | ORM / migrations | SQLAlchemy 2 (async) + Alembic |
 | Frontend | HTMX 2 + Jinja2 templates (no SPA) |
 | Auth | EIP-191 wallet-nonce (single-use, 10 min TTL, CSRF) |
-| Payments | x402 (B402) over $U (`eip3009`), facilitator EOA settles on BSC |
+| Payments | x402 (B402) over $U (`eip3009`) + ERC-8183 job escrow (buyer-side), browser pays gas on BSC |
 | On-chain indexer | Alchemy (backfill) + Chainstack (realtime) RPC |
 | Packaging | pyproject.toml + multi-stage Dockerfile + Docker Compose |
 | Quality | ruff (lint + format), mypy (strict on `app/`), pytest |
@@ -47,7 +48,7 @@ Then from the repo root:
 cp .env.example .env
 # edit .env — at minimum set SECRET_KEY to a real 32+ byte value
 uv sync --extra dev
-uv run alembic upgrade head   # applies the 5 real migrations (0001_initial..0005_onchain_index)
+uv run alembic upgrade head   # applies all migrations (0001_initial..0014_hired_agent_erc8183)
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -72,9 +73,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ## Running tests
 
-The smoke suite lives in `tests/`: 19 test files from the original suite plus
-`test_categories.py` (20 total), with `conftest.py` and `fixtures/`. Default
-`uv run pytest` uses an aiosqlite engine and runs in ~7s. The
+The smoke suite lives in `tests/`: 24 test files plus `conftest.py` and
+`fixtures/`. Default `uv run pytest` uses an aiosqlite engine. The
 `postgres`-marked scenarios (GENERATED columns, ON CONFLICT, trigram, FK
 cascades) skip unless `RUN_POSTGRES_TESTS=1` is set with a live DSN.
 
@@ -125,20 +125,23 @@ Both services have healthchecks; `app` only starts once `db` reports healthy.
 │   │                            #   favorite, flagged_address, hired_agent,
 │   │                            #   onchain_index, sync_state, user
 │   ├── routers/                 # all routers in app/routers/: agents, auth,
-│   │                            #   favorites, healthz, hires, onchain_hires,
-│   │                            #   onchain_stats, pages, payments, sync
+│   │                            #   escrow_hires, favorites, healthz, hires,
+│   │                            #   onchain_hires, onchain_stats, pages, payments,
+│   │                            #   sync
 │   ├── schemas/                 # pydantic request/response models
 │   ├── services/                # all services in app/services/ (current audit):
-│   │                            #   agent_payments, agent_score, auth, categories,
+│   │                            #   agent_payments, agent_score, agent_total_score,
+│   │                            #   altana_abi, altana_jobs, auth, categories,
 │   │                            #   client_8004scan, client_bscscan, client_evoevo,
-│   │                            #   client_mcp, client_termix, feedback_sync,
-│   │                            #   flagged_sync, onchain_indexer, payment,
-│   │                            #   probe_worker, reclassify, rpc_client, sync_worker
+│   │                            #   client_mcp, client_termix, endpoint_resolver,
+│   │                            #   feedback_sync, flagged_sync, onchain_indexer,
+│   │                            #   payment, probe_worker, reclassify, rpc_client,
+│   │                            #   sync_worker
 │   ├── templates/               # base.html + pages/* + partials/*
 │   ├── static/                  # css/, js/ (htmx, ethers, payment.js), img/
 │   └── worker/sync.py           # CLI: `python -m app.worker.sync`
-├── migrations/versions/         # 0001_initial … 0011_fix_onchain_null_array
-├── tests/                       # 20 test files + conftest.py + fixtures/
+├── migrations/versions/         # 0001_initial … 0014_hired_agent_erc8183
+├── tests/                       # 24 test files + conftest.py + fixtures/
 ├── scripts/                     # dev tooling (see "Dev tooling" below)
 ├── index-blocks.html            # dev UI for the block-index webhook
 ├── n8n-sync-workflow.json       # the real sync scheduler (every 12 min)
@@ -334,22 +337,30 @@ the CSRF header derived from the session cookie.
 The marketplace acts as a **B402 merchant + facilitator**: hiring an agent
 creates a payment challenge over **$U** (United Stables, `eip3009` rail),
 the browser signs it with ethers v6 (vendored, MetaMask), and the
-facilitator EOA settles on BSC. Flow:
+facilitator EOA settles on BSC. The price is **offer-driven**: the Hire CTA
+lazily probes the agent's own endpoint and quotes its real price (no flat
+price, no marketplace fee). Flow:
 
-1. **Signed-in user** opens an agent detail page → the Hire CTA shows the
-   flat price (**$1.00**, `X402_DEFAULT_PRICE_USD`) — disabled when the
-   agent has no payment wallet (`agent_wallet`).
-2. Clicking the CTA POSTs `/api/hires` → **201 + B402 challenge**
-   (`x402Version: 2`, `accepts[]` eip3009 $U, `payTo` = agent wallet,
-   `maxTimeoutSeconds` 300).
-3. `app/static/js/payment.js` (ethers v6) signs the EIP-712
+1. **Signed-in user** opens an agent detail page → the Hire CTA renders
+   "Checking availability…" and, on load, GETs `/agents/{chain}/{token}/hire-offer`,
+   which probes the agent endpoint (`a2a_endpoint`, else `agent_url`) with a
+   2s timeout.
+2. If the agent responds `402 + payment-required`, the CTA shows its real
+   `price_usd` and is enabled; otherwise it is disabled with one of:
+   `no-payment-wallet`, `no-endpoint`, `endpoint-unreachable`, or
+   `asset-network-not-supported`. It is **never** enabled with a guessed
+   price.
+3. Clicking the CTA POSTs `/api/hires` → **201 + B402 challenge**
+   (`x402Version: 2`, `accepts[]` eip3009 $U, `payTo` = the agent's wallet,
+   amount = the probed offer, `maxTimeoutSeconds` 300).
+4. `app/static/js/payment.js` (ethers v6) signs the EIP-712
    `TransferWithAuthorization` envelope: random 32-byte nonce,
    `validAfter = now - 120s`, `validBefore = now + maxTimeoutSeconds`.
-4. POST `/api/hires/{id}/pay` carries the base64 envelope in `X-PAYMENT`
+5. POST `/api/hires/{id}/pay` carries the base64 envelope in `X-PAYMENT`
    (or `PAYMENT-SIGNATURE`). The server verifies chain → token → amount →
    payTo → validity → signature, then the facilitator broadcasts the
    settlement and the hire flips to `paid` + `tx_hash`.
-5. The browser redirects to the agent's own `agent_url` (http(s) only) or
+6. The browser redirects to the agent's own `agent_url` (http(s) only) or
    back to the detail page. Failures leave the hire `failed` with the error
    shown on the page — never a dead-end.
 
@@ -373,6 +384,85 @@ X402_FACILITATOR_KEY=<mainnet facilitator key, never committed>
   (pay → 503 `payment_gateway_unconfigured`).
 - Use a dedicated key per environment (never the testnet key on mainnet),
   funded with a small BNB balance (~0.01 BNB covers 50+ settlements).
+---
+
+## ERC-8183 escrow hire (buyer-side)
+
+Alongside the x402 rail, the detail page offers a **secondary "Hire via
+Escrow"** button that runs the ERC-8183 job-escrow protocol on BSC. The
+browser pays its own gas (MetaMask); the marketplace only builds calldata
+and records audit rows — it never holds custody of $U or signs txs.
+
+Flow (5 signed transactions, in order, all to BSC mainnet contracts):
+
+1. `approve($U, commerceProxy, budget)` — on the $U token.
+2. `createJob(provider, router, expiredAt, task, router)` — on the
+   commerce proxy; opens the on-chain job and returns a `jobId`.
+3. `registerJob(jobId, OptimisticPolicy)` — on the **EvaluatorRouter**
+   (not the commerce kernel) to bind the dispute policy.
+4. `setBudget(jobId, budget)` — on the commerce proxy.
+5. `fund(jobId, expectedBudget)` — on the commerce proxy; escrows the $U.
+
+After the createJob tx mines, `escrow.js` extracts `jobId` from the
+`JobCreated` receipt log and reports it back via
+`POST /api/hires/escrow/{id}/submit`.
+
+### Contracts (BSC mainnet 56)
+
+| Contract | Address |
+|---|---|
+| `AgenticCommerceUpgradeable` (proxy) | `0xEa4DAa3100A767e86FDed867729ae7446476EBA6` |
+| `EvaluatorRouterUpgradeable` (proxy) | `0x51895229E12F9876011789B04f8698af06cCD6DA` |
+| `OptimisticPolicy` | `0x9C01845705b3078Aa2e8cfF7520a6376FD766dE5` |
+| `$U` token | `0xcE24439F2D9C6a2289F741120FE202248B666666` |
+
+Source of truth: `github.com/bnb-chain/apex-contracts` →
+`scripts/addresses.ts`. Verify the EIP-55 checksum before hardcoding any
+of these (a typo in the router address reverts with `INVALID_ARGUMENT`).
+
+### API
+
+- `POST /api/hires/escrow` — create a PENDING hire + return the pre-armed
+  calldata (`approve`, `createJob`, `fund`) plus addresses.
+- `POST /api/hires/escrow/{id}/submit` — record the on-chain `jobId` +
+  `createJob` tx hash (idempotent per jobId; 409 on overwrite).
+- `GET  /api/hires/escrow/{id}` — hire row + (optionally) on-chain state.
+
+### Env vars
+
+```bash
+ERC8183_ENABLED=true
+ERC8183_CHAIN_ID=56
+ERC8183_COMMERCE_ADDRESS=0xEa4DAa3100A767e86FDed867729ae7446476EBA6
+ERC8183_ROUTER_ADDRESS=0x51895229E12F9876011789B04f8698af06cCD6DA
+ERC8183_U_TOKEN_ADDRESS=0xcE24439F2D9C6a2289F741120FE202248B666666
+ERC8183_POLICY_ADDRESS=0x9C01845705b3078Aa2e8cfF7520a6376FD766dE5
+ERC8183_DEFAULT_BUDGET_WEI=100000000000000000   # 0.1 $U
+ERC8183_JOB_EXPIRY_SECONDS=86400                # 24h deadline
+```
+
+### Total score (agent detail Metrics)
+
+The Metrics section shows a total score computed from six components
+(Endpoint health, Endpoint verification, Metadata completeness, Wallet
+activity, Activity score, Score breakdown) plus two binary bonuses: +10
+if `hires > 10` and +10 if `reviews > 10`. Components that are `n/a` are
+excluded from the sum (no cap). Pure logic lives in
+`app/services/agent_total_score.py`.
+
+### Off-chain service endpoints (`{agentId}`)
+
+Termix off-chain registration metadata ships service URLs with a literal
+`{agentId}` placeholder. The resolver (`app/services/endpoint_resolver.py`)
+substitutes the id by **API path** (verified against the live Termix API):
+
+- `/a2a/agents/{agentId}/card` → `{agentId}` == ERC-8004 `token_id` (200).
+- `/agents/{agentId}/services` → `{agentId}` == the internal Termix card
+  id, fetched live via `fetch_termix_card` (token_id and ownerAccountId
+  both 404 there).
+
+When the internal id is unavailable, the endpoint renders as a note rather
+than a literal `{agentId}` link.
 
 ---
 
@@ -471,9 +561,17 @@ The full list (grouped by concern) is:
 | `X402_CHAIN_ID` | `97` | BSC chain for x402 payments (`56` = mainnet demo override) |
 | `X402_FACILITATOR_KEY` | empty | facilitator EOA key (gas only); empty disables payments (503); never committed |
 | `X402_RPC_URL` | per chain | optional BSC RPC override; per-chain public node otherwise |
-| `X402_DEFAULT_PRICE_USD` | `1.00` | flat hire price, shown on the Hire CTA |
+| `X402_DEFAULT_PRICE_USD` | `1.00` | initial Hire CTA fallback price; the real CTA price is the agent's probed offer |
 | `X402_U_TOKEN_ADDRESS_56` / `X402_U_TOKEN_ADDRESS_97` | pinned $U addresses | United Stables per chain |
 | `X402_PERMIT2_ADDRESS` | Permit2 | reserved for future rails (unused in v1) |
+| `ERC8183_ENABLED` | `false` | enable the secondary "Hire via Escrow" button (ERC-8183) |
+| `ERC8183_CHAIN_ID` | `56` | BSC chain for the escrow flow (56 mainnet, 97 testnet) |
+| `ERC8183_COMMERCE_ADDRESS` | pinned mainnet proxy | `AgenticCommerceUpgradeable` proxy |
+| `ERC8183_ROUTER_ADDRESS` | pinned mainnet proxy | `EvaluatorRouterUpgradeable` proxy |
+| `ERC8183_U_TOKEN_ADDRESS` | pinned mainnet | $U token address on the escrow chain |
+| `ERC8183_POLICY_ADDRESS` | pinned mainnet | `OptimisticPolicy` address |
+| `ERC8183_DEFAULT_BUDGET_WEI` | `100000000000000000` | default escrow budget (0.1 $U, 18 decimals) |
+| `ERC8183_JOB_EXPIRY_SECONDS` | `86400` | job deadline (24h); must be > now+5min |
 | `POSTGRES_USER` | `bnb` | docker-compose `db` user |
 | `POSTGRES_PASSWORD` | `change-me` | docker-compose `db` password |
 | `POSTGRES_DB` | `bnb_agent` | docker-compose `db` database name |
