@@ -27,7 +27,7 @@ from tests.conftest import _now, _sign_in
 # Addresses pinned to the BSC mainnet registry — must match
 # `migrations/addresses.ts` (apex-contracts).
 _ESCROW_COMMERCE = "0xEa4DAa3100A767e86FDed867729ae7446476EBA6"
-_ESCROW_ROUTER = "0x51895229E12F9876011789b04f8698af06cCD6DA"
+_ESCROW_ROUTER = "0x51895229E12F9876011789B04f8698af06cCD6DA"
 _ESCROW_U_TOKEN = "0xcE24439F2D9C6a2289F741120FE202248B666666"
 _AGENT_WALLET = "0x" + "aa" * 20
 
