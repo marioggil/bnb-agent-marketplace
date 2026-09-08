@@ -1686,3 +1686,10 @@ header nav .user-address { color: var(--color-text); cursor: default; }
   margin: 0;
   color: var(--color-text);
 }
+
+/* Score scale hint under the metric label */
+.metrics-score-scale {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}

@@ -962,6 +962,9 @@ async def test_detail_page_total_score_is_sum_of_components(client, db):
     assert m is not None, f"score span not found in: {body[:500]}"
     rendered_score = m.group(1).strip()
     assert rendered_score == "400", f"expected 400, got {rendered_score!r}"
+    # The score's scale is shown next to the value: out of 600 base
+    # (6 components x 100) plus up to 10 (hires) + 10 (reviews).
+    assert "out of 600" in body, "score scale label missing"
 
 
 # ---------------------------------------------------------------------------
