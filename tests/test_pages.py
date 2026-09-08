@@ -15,6 +15,7 @@ from app.db.models.agent import (
 )
 from tests.conftest import _now
 
+
 async def _seed_one(
     session,
     token_id: int = 1,
@@ -772,6 +773,7 @@ async def test_agent_detail_hire_cta_enabled_when_only_one_flag_set(client, db):
 
 from app.config import _settings_cache  # noqa: E402
 
+
 async def _seed_agent_with_wallet(
     session,
     token_id: int,
@@ -910,3 +912,53 @@ async def test_home_card_keeps_score_and_activity(client, db):
     body = client.get("/").text
     assert "score" in body
     assert "activity" in body
+
+
+# ---------------------------------------------------------------------------
+# Total score wiring (anatomy v2): the displayed score = sum of 6 components
+# + 10 bonus if hires > 10 + 10 bonus if reviews > 10.
+# ---------------------------------------------------------------------------
+
+
+async def test_detail_page_total_score_is_sum_of_components(client, db):
+    """The rendered total score equals the sum of available components
+    plus binary bonuses for hires/reviews > 10. No cap."""
+    import re
+    from datetime import datetime, timezone
+    from decimal import Decimal
+
+    from app.db.models.agent import (
+        BSC_CHAIN_ID,
+        BSC_IDENTITY_REGISTRY,
+        AgentCache,
+        build_agent_id,
+    )
+    from app.db.models.user import User
+
+    aid = build_agent_id(56, BSC_IDENTITY_REGISTRY, 313)
+    owner = "0x" + "11" * 20
+    db.add(User(address=owner, created_at=datetime.now(timezone.utc)))
+    db.add(AgentCache(
+        agent_id=aid,
+        chain_id=BSC_CHAIN_ID, token_id=313,
+        registry_address=BSC_IDENTITY_REGISTRY,
+        name="ScoreAgent",
+        description="x",
+        agent_wallet="0x" + "ab" * 20,
+        owner_address=owner,
+        health_score=80,
+        is_endpoint_verified=True,
+        metadata_completeness_score=90,
+        activity_score=70,
+        total_feedbacks=15,
+        average_score=Decimal("85"),
+        supported_protocols=[], cross_chain_versions=[], raw={},
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    ))
+    await db.commit()
+    body = client.get("/agents/56/313").text
+    m = re.search(r'metrics-score-value[^>]*>([^<]+)<', body)
+    assert m is not None, f"score span not found in: {body[:500]}"
+    rendered_score = m.group(1).strip()
+    assert rendered_score == "400", f"expected 400, got {rendered_score!r}"

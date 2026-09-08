@@ -26,6 +26,7 @@ from app.db.models.favorite import Favorite
 from app.db.session import AsyncSessionLocal
 from app.errors import AuthRequired, NotFound
 from app.schemas.hire_offer import HireOffer
+from app.services.agent_total_score import compute_total_score
 from app.services.auth import (
     SESSION_COOKIE_NAME,
     _read_session,
@@ -214,7 +215,7 @@ async def _hires_count(agent_ids: list[str]) -> dict[str, int]:
     """'Hired by N' counts — distinct addresses per agent with a paid hire.
 
     One query for the whole page (T1 trust signal, DESIGN.md); keys are
-    canonical `agent_id`s so templates do `hires.get(agent.agent_id)`.
+    canonical `agent_id`s so templates do `hires.get(row.agent_id)`.
     """
     if not agent_ids:
         return {}
@@ -1077,6 +1078,39 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             "creator_is_owner_chip": creator_is_owner_chip,
             "feedback_total": feedback_total,
             "feedback_avg": feedback_avg,
+            # Total score (anatomy v2): sum of 6 components + binary bonuses
+            # (hires > 10, reviews > 10). See agent_total_score.compute_total_score.
+            "total_score": compute_total_score(
+                endpoint_health=(
+                    int(profile["health_score"])
+                    if profile.get("health_score") is not None else None
+                ),
+                endpoint_verification=(
+                    100 if row.is_endpoint_verified is True
+                    else 0 if row.is_endpoint_verified is False
+                    else None
+                ),
+                metadata_completeness=(
+                    int(profile["metadata_completeness"])
+                    if profile.get("metadata_completeness") is not None else None
+                ),
+                wallet_activity=(
+                    int(wallet_activity_score)
+                    if wallet_activity_score is not None else None
+                ),
+                activity_score=(
+                    int(row.activity_score) if row.activity_score is not None else None
+                ),
+                score_breakdown=(
+                    int(
+                  sum(d.get("score", 0) for d in (profile.get("score_dimensions") or []))
+                  // len(profile.get("score_dimensions") or [1])
+              )
+                    if profile.get("score_dimensions") else None
+                ),
+                hires=hires.get(row.agent_id) or 0,
+                reviews=int(row.total_feedbacks or 0),
+            ),
             "chain_slugs": _CHAIN_SLUGS,
         },
     )
