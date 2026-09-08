@@ -70,6 +70,65 @@
     <dt>Protocols</dt><dd>{{ agent.supported_protocols | join(', ') or '—' }}</dd>
   </dl>
 
+  <!-- METRICS section (anatomy v2) -->
+  <section class="metrics">
+    <h2 class="metrics-heading">Metrics</h2>
+    <div class="metrics-total">
+      {% if total_score is defined and (total_score.base > 0 or total_score.bonus_hires > 0 or total_score.bonus_reviews > 0) %}
+        <span class="metrics-score-value"
+              title="base: {{ total_score.base }} ({{ total_score.components|length }} components)">{{ total_score.total }}</span>
+        <span class="metrics-score-suffix">pts</span>
+      {% else %}
+        <span class="metrics-score-value">n/a</span>
+      {% endif %}
+      <span class="metrics-score-label">total score</span>
+    </div>
+    <ul class="metrics-counts">
+      <li class="metrics-count">
+        <span class="metrics-count-value">{{ hires.get(agent.agent_id) or 0 }}</span>
+        <span class="metrics-count-label">Hires</span>
+      </li>
+      <li class="metrics-count">
+        <span class="metrics-count-value">{{ agent.total_feedbacks or 0 }}</span>
+        <span class="metrics-count-label">Reviews</span>
+      </li>
+    </ul>
+  </section>
+    <details class="metrics-disclosure">
+      <summary>Show Agent profile</summary>
+      <dl class="metrics-disclosure-list">
+        <dt>Endpoint health</dt>
+        <dd>{% if profile.health_score is not none %}{{ '%.0f'|format(profile.health_score) }}/100{% else %}not measured{% endif %}</dd>
+        <dt>Endpoint verification</dt>
+        <dd>{% if agent.is_endpoint_verified %}<span class="badge verified">verified</span>{% else %}<span class="badge category">not verified</span>{% endif %}</dd>
+        <dt>Metadata completeness</dt>
+        <dd>{{ profile.metadata_completeness or 0 }}/100</dd>
+        <dt>Wallet activity</dt>
+        <dd>{% if wallet_activity_score is not none %}{{ '%.2f'|format(wallet_activity_score) }}/100{% else %}n/a/100{% endif %}</dd>
+        <dt>Activity score</dt>
+        <dd>{% if agent.activity_score is not none %}{{ '%.2f'|format(agent.activity_score) }}{% else %}n/a{% endif %}</dd>
+        <dt>Score breakdown</dt>
+        <dd>{% if profile.score_dimensions %}{% for d in profile.score_dimensions %}<div>{{ d.name }}: {{ '%.0f'|format(d.score) }}</div>{% endfor %}{% else %}n/a{% endif %}</dd>
+      </dl>
+    </details>
+  </section>
+
+  {% if profile.tags or agent.total_feedbacks > 0 %}
+  <section class="agent-extras">
+    {% if profile.tags %}
+    <div class="agent-tags-row">
+      <h3>Tags</h3>
+      <div class="tag-list">
+        {% for t in profile.tags %}<span class="badge category">{{ t }}</span>{% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% if agent.total_feedbacks > 0 %}
+    <p class="ratings">&#9733; {{ agent.star_count }} &middot; {{ agent.total_feedbacks }} ratings</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <!-- Technical sheet (category study §8): source-reported fields rendered
        as-is. Identity + quality signals; never a judgment. -->
   <section class="agent-profile">
