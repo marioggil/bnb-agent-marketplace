@@ -1,0 +1,107 @@
+{# ERC-8183 escrow hire button (buyer-side). Renders a SECONDARY button
+   alongside the x402 primary CTA. Available when:
+     - the agent has an `agent_wallet` (ERC-8183 provider),
+     - `ERC8183_ENABLED=true`,
+     - the agent is not OFAC-flagged (both_flags gate).
+
+   Click → opens a modal with:
+     1. About this agent (read-only from registry metadata).
+     2. Your task (textarea, required).
+     3. Budget (default from settings, editable).
+     4. Total to pay + deadline + refund policy.
+
+   The browser (escrow.js) does the 3 signer.sendTransaction() calls.
+
+   Spec: docs/category-study.md §ERC-8183 (buyer-side). #}
+{% if escrow_enabled and not both_flags and profile.wallet %}
+<div class="hire-escrow-wrap" data-escrow-enabled="true"
+     data-agent-id="{{ agent.agent_id }}"
+     data-agent-name="{{ agent.name or 'this agent' }}"
+     data-agent-description="{{ agent.description or '' }}"
+     data-agent-tags='{{ (agent.tags or []) | tojson }}'
+     data-agent-wallet="{{ profile.wallet }}"
+     data-commerce-address="{{ escrow_commerce_address }}"
+     data-u-token-address="{{ escrow_u_token_address }}"
+     data-chain-id="{{ escrow_chain_id }}"
+     data-default-budget-wei="{{ escrow_default_budget_wei }}"
+     data-job-expiry-seconds="{{ escrow_job_expiry_seconds }}"
+     data-csrf="{{ csrf_token() if csrf_token is defined else '' }}">
+
+  <button id="hire-escrow-cta" type="button" class="btn btn-secondary hire-escrow-open">
+    Hire via Escrow &rarr; ${{ '%.2f'|format(escrow_default_budget_usd) }}
+  </button>
+  <p class="hint">Refundable if the agent doesn't deliver within {{ (escrow_job_expiry_seconds // 3600) }}h.</p>
+</div>
+
+{# Modal: rendered once per page, hidden by default. Filled by escrow.js
+   when the CTA is clicked. #}
+<div id="hire-escrow-modal" class="hire-escrow-modal" hidden aria-hidden="true"
+     role="dialog" aria-labelledby="hire-escrow-modal-title">
+  <div class="hire-escrow-modal__backdrop" data-close></div>
+  <div class="hire-escrow-modal__panel">
+    <header class="hire-escrow-modal__header">
+      <h2 id="hire-escrow-modal-title">Hire <span data-agent-name>agent</span></h2>
+      <button type="button" class="hire-escrow-modal__close" data-close aria-label="Close">&times;</button>
+    </header>
+
+    {# Section 1: about this agent (read-only context) #}
+    <section class="hire-escrow-modal__section">
+      <h3>About this agent</h3>
+      <p class="hire-escrow-about-desc" data-agent-desc>No description provided.</p>
+      <div class="hire-escrow-tags" data-agent-tags></div>
+      <dl class="hire-escrow-meta">
+        <dt>Provider wallet</dt>
+        <dd><code data-agent-wallet>0x&hellip;</code></dd>
+      </dl>
+    </section>
+
+    {# Section 2: user input #}
+    <section class="hire-escrow-modal__section">
+      <h3>Your task</h3>
+      <label for="hire-escrow-task">What do you want this agent to do?</label>
+      <textarea id="hire-escrow-task" name="task" rows="4" required minlength="1" maxlength="4096"
+                placeholder="Describe the task you want to delegate. Be specific — the agent will deliver a response based on this."></textarea>
+      <p class="hint">Max 4096 characters. This is recorded on-chain as the job description.</p>
+    </section>
+
+    <section class="hire-escrow-modal__section">
+      <h3>Budget</h3>
+      <label for="hire-escrow-budget">Budget in $U</label>
+      <input id="hire-escrow-budget" type="number" step="0.000001" min="0.000001" required
+             value="{{ '%.6f'|format(escrow_default_budget_usd) }}">
+      <p class="hint">18-decimal $U token on BSC. 1.0 = $1.00.</p>
+    </section>
+
+    {# Section 3: summary #}
+    <section class="hire-escrow-modal__section hire-escrow-summary">
+      <h3>Summary</h3>
+      <dl>
+        <dt>Total to pay</dt>
+        <dd><span data-budget-u>$0.00</span> $U <small>(MetaMask shows exact amount + gas)</small></dd>
+        <dt>Deadline</dt>
+        <dd>{{ (escrow_job_expiry_seconds // 3600) }} hours after on-chain creation</dd>
+        <dt>Refund policy</dt>
+        <dd>Full refund if the agent doesn't deliver before the deadline.</dd>
+      </dl>
+    </section>
+
+    {# Status line shown during the 3-step signing flow. #}
+    <div id="hire-escrow-status" class="hire-escrow-status" data-state="idle" role="status" aria-live="polite">
+      <span class="status-idle">Ready to sign.</span>
+      <span class="status-pending">Sign the next transaction in MetaMask&hellip;</span>
+      <span class="status-mining">Tx mined. Waiting for confirmations&hellip;</span>
+      <span class="status-submitting">Submitting on-chain job id&hellip;</span>
+      <span class="status-done">Job funded. Seller has 24h to deliver.</span>
+      <span class="status-failed">Error: <span id="hire-escrow-error"></span></span>
+    </div>
+
+    <footer class="hire-escrow-modal__footer">
+      <button type="button" class="btn" data-close>Cancel</button>
+      <button type="button" id="hire-escrow-confirm" class="btn btn-primary"
+              data-label-confirm="Sign 5 transactions">
+        Sign 5 transactions
+      </button>
+    </footer>
+  </div>
+</div>
+{% endif %}

@@ -645,6 +645,11 @@
     <p class="hint">This agent cannot be hired &mdash; no payment wallet (payTo) is registered.</p>
     {% endif %}
     {% endif %}
+    {# ERC-8183 escrow (buyer-side). The partial renders nothing if the
+       feature flag is off, the agent has no wallet, or the agent is OFAC-
+       dual-flagged. Lives OUTSIDE the if/elif/else above so it can pair
+       with both the x402 hire button (primary) and the "not x402" path. #}
+    {% include "partials/hire_offer_escrow.html" %}
     <div id="hire-status" class="is-idle" data-state="idle" role="status" aria-live="polite">
       <span class="status-idle">Not started.</span>
       <span class="status-pending">Pending — awaiting your wallet signature&hellip;</span>
@@ -694,4 +699,6 @@
 <!-- Vendored ethers v6 UMD + the x402 signer (no CDN inside the container). -->
 <script src="/static/js/ethers-6.14.min.js" defer></script>
 <script src="/static/js/payment.js" defer></script>
+<!-- ERC-8183 escrow handler (buyer-side). Uses the same ethers v6 loaded above. -->
+<script src="/static/js/escrow.js" defer></script>
 {% endblock %}

@@ -45,6 +45,12 @@ os.environ.setdefault("X402_CHAIN_ID", "97")
 os.environ.setdefault("X402_RPC_URL", "https://rpc.example.invalid")
 os.environ.setdefault("X402_FACILITATOR_KEY", TEST_FACILITATOR_KEY)
 
+# ERC-8183 escrow (buyer-side) - defaults to enabled so the escrow router
+# tests can exercise the happy path; the disabled-flag test flips
+# ERC8183_ENABLED off explicitly when needed.
+os.environ.setdefault("ERC8183_ENABLED", "true")
+os.environ.setdefault("ERC8183_CHAIN_ID", "56")
+
 import pytest  # noqa: E402
 import respx  # noqa: E402
 from eth_account import Account  # noqa: E402
@@ -413,6 +419,7 @@ def app():
     for _mod in (
         "app.routers.pages",
         "app.routers.hires",
+        "app.routers.escrow_hires",
         "app.routers.favorites",
         "app.routers.agents",
         "app.routers.healthz",

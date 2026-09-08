@@ -22,6 +22,7 @@ from app.errors import register_error_handlers
 from app.routers import (
     agents,
     auth,
+    escrow_hires,
     favorites,
     healthz,
     hires,
@@ -99,6 +100,7 @@ def create_app() -> FastAPI:
     app.include_router(agents.router)
     app.include_router(favorites.router)
     app.include_router(hires.router)
+    app.include_router(escrow_hires.router)
     app.include_router(onchain_hires.router)
     app.include_router(onchain_stats.router)
     app.include_router(pages.router)

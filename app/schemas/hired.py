@@ -36,6 +36,12 @@ class HireOut(BaseModel):
     pay_to_agent: str | None = None
     asset_agent: str | None = None
     network_agent: str | None = None
+    # ERC-8183 fields (migration 0014). Null on x402 rows; populated by
+    # POST /api/hires/escrow on the escrow path.
+    job_id: int | None = None
+    chain_id: int | None = None
+    provider_address: str | None = None
+    budget_wei: Decimal | None = None
     created_at: datetime
     updated_at: datetime
 

@@ -70,7 +70,9 @@ class HiredAgent(Base):
     #: Token address (checksummed, e.g. pinned $U for the configured chain).
     token: Mapped[str | None] = mapped_column(Text, nullable=True)
     #: Payment rail — `"eip3009"` in v1 (Q2; TEXT for future rails).
-    rail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rail: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'eip3009'"),
+    )
     #: Recipient of the settlement — echo of the agent's `agent_wallet`
     #: (design Q6: no owner fallback).
     pay_to: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -88,6 +90,19 @@ class HiredAgent(Base):
     pay_to_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     asset_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     network_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ---- ERC-8183 escrow fields (migration 0014) -------------------------
+    #: On-chain ERC-8183 job id (returned by `createJob`). Null for x402
+    #: rows; paired with `address` via a unique partial index to dedupe.
+    job_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    #: Chain id the job was created on (56 mainnet, 97 testnet).
+    chain_id: Mapped[int | None] = mapped_column(nullable=True)
+    #: Agent wallet used as the ERC-8183 `provider`. Mirrors `pay_to` for
+    #: x402 — named differently so the schemas stay readable.
+    provider_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: ERC-8183 budget in raw wei (the `expectedBudget` arg to `fund`).
+    #: Stored as NUMERIC(38,0) — exact integer, no decimal drift.
+    budget_wei: Mapped[int | None] = mapped_column(Numeric(38, 0), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")

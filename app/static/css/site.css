@@ -1089,3 +1089,187 @@ header nav .user-address { color: var(--color-text); cursor: default; }
   gap: var(--space-2);
 }
 .cross-chain-list a { color: var(--color-accent); }
+
+/* ============================================================================
+   ERC-8183 escrow (buyer-side) — secondary hire button + modal
+   ============================================================================ */
+
+.btn-secondary {
+  background: transparent;
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  margin-left: var(--space-2);
+}
+.btn-secondary:hover {
+  background: var(--color-accent);
+  color: #062a26;
+}
+.btn-secondary[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hire-escrow-wrap {
+  margin-top: var(--space-3);
+}
+.hire-escrow-wrap .hint {
+  margin: var(--space-1) 0 0;
+  font-size: 0.85em;
+  color: var(--color-text-muted, #888);
+}
+
+/* Modal */
+.hire-escrow-modal[hidden] {
+  display: none;
+}
+.hire-escrow-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hire-escrow-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+.hire-escrow-modal__panel {
+  position: relative;
+  background: var(--color-bg, #0e1b1a);
+  color: inherit;
+  border-radius: 8px;
+  max-width: 540px;
+  width: calc(100% - 2rem);
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+  padding: var(--space-4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+.hire-escrow-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+.hire-escrow-modal__header h2 {
+  margin: 0;
+  font-size: 1.25em;
+}
+.hire-escrow-modal__close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1.5em;
+  cursor: pointer;
+  padding: 0 0.5rem;
+  line-height: 1;
+}
+.hire-escrow-modal__section {
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.hire-escrow-modal__section:last-of-type {
+  border-bottom: none;
+}
+.hire-escrow-modal__section h3 {
+  margin: 0 0 var(--space-2);
+  font-size: 1em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.8;
+}
+.hire-escrow-modal__section label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-weight: 600;
+}
+.hire-escrow-modal__section textarea,
+.hire-escrow-modal__section input[type="number"] {
+  width: 100%;
+  padding: var(--space-2);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-family: inherit;
+  font-size: 1em;
+  box-sizing: border-box;
+}
+.hire-escrow-modal__section textarea:focus,
+.hire-escrow-modal__section input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+.hire-escrow-modal__section textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+.hire-escrow-about-desc {
+  margin: 0 0 var(--space-2);
+  opacity: 0.85;
+}
+.hire-escrow-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+.hire-escrow-meta dt {
+  font-size: 0.85em;
+  opacity: 0.7;
+}
+.hire-escrow-meta dd {
+  margin: 0 0 var(--space-2);
+  font-family: monospace;
+  font-size: 0.85em;
+  word-break: break-all;
+}
+.hire-escrow-summary dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+}
+.hire-escrow-summary dt {
+  font-weight: 600;
+}
+.hire-escrow-summary dd {
+  margin: 0;
+}
+.hire-escrow-summary small {
+  opacity: 0.6;
+  font-weight: normal;
+}
+
+.hire-escrow-status {
+  padding: var(--space-2);
+  border-radius: 4px;
+  margin-bottom: var(--space-3);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.9em;
+}
+.hire-escrow-status > span {
+  display: none;
+}
+.hire-escrow-status[data-state="idle"] .status-idle,
+.hire-escrow-status[data-state="pending"] .status-pending,
+.hire-escrow-status[data-state="mining"] .status-mining,
+.hire-escrow-status[data-state="submitting"] .status-submitting,
+.hire-escrow-status[data-state="done"] .status-done,
+.hire-escrow-status[data-state="failed"] .status-failed {
+  display: block;
+}
+.hire-escrow-status[data-state="failed"] {
+  background: rgba(255, 80, 80, 0.15);
+  color: #ff8a8a;
+}
+
+.hire-escrow-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}

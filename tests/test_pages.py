@@ -800,3 +800,75 @@ async def test_agent_detail_hire_cta_enabled_when_only_one_flag_set(client, db):
         f"#hire-cta must NOT render `aria-disabled=\"true\"` when only one "
         f"flag is set. Got opening tag: {cta_open_tag!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# ERC-8183 escrow (buyer-side) — secondary hire button on the agent page
+# ---------------------------------------------------------------------------
+
+from app.config import _settings_cache  # noqa: E402
+
+
+async def _seed_agent_with_wallet(
+    session,
+    token_id: int,
+    *,
+    wallet: str | None = "0x" + "ab" * 20,
+    name: str = "WalletAgent",
+) -> str:
+    aid = build_agent_id(56, BSC_IDENTITY_REGISTRY, token_id)
+    session.add(
+        AgentCache(
+            agent_id=aid,
+            chain_id=BSC_CHAIN_ID,
+            token_id=token_id,
+            registry_address=BSC_IDENTITY_REGISTRY,
+            name=name,
+            agent_wallet=wallet,
+            description="A test agent with a wallet",
+            tags=["test", "erc8183"],
+            supported_protocols=[],
+            cross_chain_versions=[],
+            raw={},
+            created_at=_now(),
+            updated_at=_now(),
+        )
+    )
+    await session.commit()
+    return aid
+
+
+async def test_agent_page_renders_escrow_button_when_wallet_present(client, db):
+    """When the agent has agent_wallet and ERC8183_ENABLED=true, the page
+    renders the secondary "Hire via Escrow" button + the modal scaffold."""
+    await _seed_agent_with_wallet(db, 100, wallet="0x" + "ab" * 20)
+    body = client.get("/agents/56/100").text
+    assert 'id="hire-escrow-cta"' in body
+    assert "Hire via Escrow" in body
+    # Modal scaffold present
+    assert 'id="hire-escrow-modal"' in body
+    # Data attributes for the JS handler
+    assert 'data-commerce-address="0xEa4DAa3100A767e86FDed867729ae7446476EBA6"' in body
+    assert 'data-u-token-address="0xcE24439F2D9C6a2289F741120FE202248B666666"' in body
+    assert "data-chain-id=\"56\"" in body
+    assert "data-default-budget-wei=\"100000000000000000\"" in body
+
+
+async def test_agent_page_hides_escrow_button_when_no_wallet(client, db):
+    await _seed_agent_with_wallet(db, 101, wallet=None)
+    body = client.get("/agents/56/101").text
+    assert 'id="hire-escrow-cta"' not in body
+    assert 'id="hire-escrow-modal"' not in body
+
+
+async def test_agent_page_hides_escrow_button_when_disabled(client, db, monkeypatch):
+    """ERC8183_ENABLED=false -> the partial no-ops; no button rendered."""
+    monkeypatch.setenv("ERC8183_ENABLED", "false")
+    _settings_cache.cache_clear()
+    try:
+        await _seed_agent_with_wallet(db, 102, wallet="0x" + "ab" * 20)
+        body = client.get("/agents/56/102").text
+        assert 'id="hire-escrow-cta"' not in body
+        assert 'id="hire-escrow-modal"' not in body
+    finally:
+        _settings_cache.cache_clear()

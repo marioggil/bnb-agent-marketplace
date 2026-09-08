@@ -256,6 +256,60 @@ class Settings(BaseSettings):
         description="Permit2 address; reserved for future rails (unused in v1).",
     )
 
+    # ---- ERC-8183 escrow (buyer-side, BSC mainnet) -----------------------
+    # Feature flag: when false, POST /api/hires/escrow answers 503.
+    erc8183_enabled: bool = Field(
+        default=False,
+        alias="ERC8183_ENABLED",
+        description="Enable ERC-8183 escrow hire flow (buyer-side).",
+    )
+    # Chain the escrow flow runs on (56 mainnet or 97 testnet).
+    erc8183_chain_id: int = Field(
+        default=56,
+        alias="ERC8183_CHAIN_ID",
+        ge=1,
+        description="Chain id for ERC-8183 escrow (56 mainnet, 97 testnet).",
+    )
+    # Pinned proxy addresses (default = BSC mainnet deployments from
+    # github.com/bnb-chain/apex-contracts/blob/main/scripts/addresses.ts).
+    # Override only for local hardhat forks or future chains.
+    erc8183_commerce_address: str = Field(
+        default="0xEa4DAa3100A767e86FDed867729ae7446476EBA6",
+        alias="ERC8183_COMMERCE_ADDRESS",
+        description="AgenticCommerceUpgradeable proxy address.",
+    )
+    erc8183_router_address: str = Field(
+        default="0x51895229E12F9876011789B04f8698af06cCD6DA",
+        alias="ERC8183_ROUTER_ADDRESS",
+        description="EvaluatorRouterUpgradeable proxy (used as hook+evaluator).",
+    )
+    erc8183_u_token_address: str = Field(
+        default="0xcE24439F2D9C6a2289F741120FE202248B666666",
+        alias="ERC8183_U_TOKEN_ADDRESS",
+        description="$U token address on the escrow chain.",
+    )
+    erc8183_policy_address: str = Field(
+        default="0x9C01845705b3078Aa2e8cfF7520a6376FD766dE5",
+        alias="ERC8183_POLICY_ADDRESS",
+        description="OptimisticPolicy address; bound to each jobId by registerJob.",
+    )
+    # Default budget for the escrow flow in raw $U wei (18 decimals).
+    # Used by the UI default + the new-hire endpoint if no override.
+    erc8183_default_budget_wei: int = Field(
+        default=10**17,  # 0.1 $U
+        alias="ERC8183_DEFAULT_BUDGET_WEI",
+        ge=1,
+        description="Default hire budget in $U wei (18 decimals).",
+    )
+    # Job deadline in seconds (unix-relative). Contract requires > now+5min;
+    # we set 24h so sellers have time to deliver.
+    erc8183_job_expiry_seconds: int = Field(
+        default=86_400,
+        alias="ERC8183_JOB_EXPIRY_SECONDS",
+        ge=600,
+        description="Job expiry (seconds from creation). Min 600 per contract.",
+    )
+
     # ---- On-chain indexer (multi-RPC) ------------------------------------
     alchemy_api_key: str = Field(
         default="",

@@ -1034,6 +1034,18 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
             "my_last_hire": my_hires[0] if my_hires else None,
             "my_paid_count": my_paid_count,
             "tx_explorer_base": tx_explorer_base,
+            # ERC-8183 escrow (buyer-side). Settings flow values from .env;
+            # `escrow_default_budget_usd` is the wei budget converted to a
+            # $U-unit string for the CTA label.
+            "escrow_enabled": settings.erc8183_enabled,
+            "escrow_commerce_address": settings.erc8183_commerce_address,
+            "escrow_u_token_address": settings.erc8183_u_token_address,
+            "escrow_chain_id": settings.erc8183_chain_id,
+            "escrow_default_budget_wei": settings.erc8183_default_budget_wei,
+            "escrow_default_budget_usd": (
+                Decimal(settings.erc8183_default_budget_wei) / Decimal(10**18)
+            ),
+            "escrow_job_expiry_seconds": settings.erc8183_job_expiry_seconds,
             "profile": profile,
             "termix_card": termix_card,
             "evoevo_card": evoevo_card,
