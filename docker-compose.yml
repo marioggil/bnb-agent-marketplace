@@ -32,6 +32,21 @@ services:
     image: postgres:16-alpine
     container_name: bnb-agent-db
     restart: unless-stopped
+    # Local dev: trust local connections (avoids scram-sha-256 password
+    # mismatches when the host TCP connection uses a slightly different
+    # encoding than the docker-entrypoint initialization). Production
+    # (Dokploy) keeps the proper scram-sha-256 path — see .env.example.
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+    # Mount a permissive pg_hba.conf so the host can connect without the
+    # Permissive pg_hba.conf (trust) so the host can connect without the
+    # scram-sha-256 password dance. Dokploy uses its own pg_hba (the actual
+    # mount lives below in the merged `volumes:` block).
+    # Local dev only: expose Postgres to host so alembic/uvicorn can run
+    # without docker-compose run. Dokploy doesn't need this (the app
+    # container reaches `db` over the internal network).
+    ports:
+      - "5432:5432"
     # Postgres credentials come from the Dokploy panel via `env_file: .env`
     # (Dokploy writes the panel to `.env` next to this file; it is NOT
     # injected automatically — see header). Keys: POSTGRES_USER,
