@@ -478,7 +478,13 @@
           {% for svc in profile.offchain_services %}
             <div class="offchain-service">
               <strong>{{ svc.name }}</strong>
-              {% if svc.endpoint %} &mdash; <code>{{ svc.endpoint }}</code>{% endif %}
+              {% if svc.resolved_endpoint %}
+                &mdash; <a href="{{ svc.resolved_endpoint }}" target="_blank" rel="noopener" class="offchain-service-link"><code>{{ svc.resolved_endpoint }}</code></a>
+              {% elif svc.endpoint and '{agentId}' not in svc.endpoint %}
+                &mdash; <code>{{ svc.endpoint }}</code>
+              {% elif svc.endpoint %}
+                <span class="text-muted">(endpoint requires an id not available for this agent)</span>
+              {% endif %}
               {% if svc.description %}<br/><span class="text-muted">{{ svc.description }}</span>{% endif %}
               {% if svc.needs %}
                 <br/>Needs: {% for k, v in svc.needs.items() %}<code>{{ k }}</code> ({{ v }}){% if not loop.last %}, {% endif %}{% endfor %}

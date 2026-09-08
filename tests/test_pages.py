@@ -962,3 +962,101 @@ async def test_detail_page_total_score_is_sum_of_components(client, db):
     assert m is not None, f"score span not found in: {body[:500]}"
     rendered_score = m.group(1).strip()
     assert rendered_score == "400", f"expected 400, got {rendered_score!r}"
+
+
+# ---------------------------------------------------------------------------
+# Off-chain service endpoint resolution (agent-detail render).
+# {agentId} in Termix URLs must resolve: /a2a -> token_id, /services ->
+# the internal Termix card id fetched live from fetch_termix_card.
+# ---------------------------------------------------------------------------
+
+_A2A_TPL = "https://platform-backend.prod.termix.live/api/v1/a2a/agents/{agentId}/card"
+_SVC_TPL = "https://platform-backend.prod.termix.live/api/v1/agents/{agentId}/services"
+
+
+async def _seed_termix_agent(session, token_id: int, *, name: str = "TermixAgent") -> str:
+    aid = build_agent_id(56, BSC_IDENTITY_REGISTRY, token_id)
+    session.add(AgentCache(
+        agent_id=aid,
+        chain_id=BSC_CHAIN_ID, token_id=token_id,
+        registry_address=BSC_IDENTITY_REGISTRY,
+        name=name,
+        description="Termix-registered agent",
+        agent_wallet="0x" + "ab" * 20,
+        owner_address="0x" + "11" * 20,
+        supported_protocols=[],
+        cross_chain_versions=[],
+        raw_metadata={
+            "offchain_content": {
+                "name": name,
+                "active": True,
+                "termix": {
+                    "namespace": "aacp-platform",
+                    "ownerAccountId": "cmtnOWNER",
+                    "originalName": name.replace(".agent", ""),
+                },
+                "services": [
+                    {"name": "A2A", "version": "0.3.0", "endpoint": _A2A_TPL},
+                    {
+                        "name": "Termix Platform",
+                        "version": "aacp-platform-v1",
+                        "endpoint": _SVC_TPL,
+                    },
+                ],
+            }
+        },
+        created_at=_now(),
+        updated_at=_now(),
+    ))
+    await session.commit()
+    return aid
+
+
+async def test_agent_detail_resolves_agent_id_in_offchain_services(client, db, monkeypatch):
+    """When the live Termix card is fetched, both service endpoints resolve:
+    /a2a uses token_id; /services uses the internal card id. No literal
+    {agentId} remains in the rendered service endpoints."""
+    token_id = 401
+    await _seed_termix_agent(db, token_id)
+    await db.commit()
+
+    # Stub the live Termix card fetch — returns the internal id.
+    async def _fake_card(_token_id: int):
+        return {"id": "cmtnINTERNALID", "agentTokenId": str(token_id), "status": "UNBOUND"}
+
+    monkeypatch.setattr("app.services.client_termix.fetch_termix_card", _fake_card)
+    body = client.get(f"/agents/56/{token_id}").text
+
+    # No literal placeholder survives in the services block.
+    assert "{agentId}" not in body, "literal {agentId} must be resolved"
+
+    # A2A resolves to token_id.
+    assert f"/a2a/agents/{token_id}/card" in body
+    # Termix Platform /services resolves to the internal card id.
+    assert "/agents/cmtnINTERNALID/services" in body
+    # token_id must NOT leak into the /services URL.
+    assert f"/agents/{token_id}/services" not in body
+
+
+async def test_agent_detail_offchain_services_without_termix_card(
+    client, db, monkeypatch,
+):
+    """If the live card fetch fails (None), the A2A endpoint still resolves
+    via token_id, but the /services endpoint renders with a note instead of
+    a broken {agentId} link."""
+    token_id = 402
+    await _seed_termix_agent(db, token_id)
+    await db.commit()
+
+    async def _fake_card_none(_token_id: int):
+        return None
+
+    monkeypatch.setattr("app.services.client_termix.fetch_termix_card", _fake_card_none)
+    body = client.get(f"/agents/56/{token_id}").text
+
+    # A2A still resolves (only needs token_id).
+    assert f"/a2a/agents/{token_id}/card" in body
+    # The /services endpoint must NOT render a literal {agentId} URL as-is.
+    assert _SVC_TPL not in body
+    # And it must not fabricate a token_id URL (that would 404).
+    assert f"/agents/{token_id}/services" not in body

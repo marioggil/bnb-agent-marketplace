@@ -34,6 +34,7 @@ from app.services.auth import (
     issue_csrf,
 )
 from app.services.categories import CATEGORIES
+from app.services.endpoint_resolver import resolve_agent_id_placeholder
 from app.services.x402_client import (
     AgentOffer,
     is_supported_offer,
@@ -467,6 +468,40 @@ def _offchain(agent: Any) -> dict[str, Any]:
     return oc if isinstance(oc, dict) else {}
 
 
+def _resolve_offchain_service_endpoints(
+    services: list[dict[str, Any]],
+    *,
+    token_id: int,
+    termix_internal_id: str | None,
+) -> list[dict[str, Any]]:
+    """Resolve `{agentId}` placeholders in off-chain service endpoints.
+
+    Returns a copy of `services` where each dict gains `resolved_endpoint`
+    (a working http(s) URL, or None when the endpoint needs an id we do
+    not have). The original `endpoint` is preserved for display when a
+    working URL cannot be built. Services without `{agentId}` keep their
+    endpoint as-is in `resolved_endpoint`.
+
+    Resolution is path-aware (verified against the live Termix API):
+    `/a2a/` endpoints use token_id; `/services` endpoints need the
+    internal Termix card id (token_id 404s there).
+    """
+    resolved: list[dict[str, Any]] = []
+    for svc in services:
+        svc_out = dict(svc)
+        ep = svc_out.get("endpoint")
+        if isinstance(ep, str) and "{agentId}" in ep:
+            svc_out["resolved_endpoint"] = resolve_agent_id_placeholder(
+                ep, token_id=token_id, termix_internal_id=termix_internal_id
+            )
+        elif isinstance(ep, str) and ep:
+            svc_out["resolved_endpoint"] = ep
+        else:
+            svc_out["resolved_endpoint"] = None
+        resolved.append(svc_out)
+    return resolved
+
+
 def _build_agent_profile(agent: Any) -> dict[str, Any]:
     """Flatten the technical sheet fields (category study §8) for the
     detail template. All values are source-reported; the template renders
@@ -830,6 +865,17 @@ async def agent_detail(request: Request, chain_id: int, token_id: int) -> Respon
         from app.services.client_evoevo import fetch_evoevo_card
 
         evoevo_card = await fetch_evoevo_card(token_id)
+
+    # Resolve {agentId} placeholders in off-chain service endpoints.
+    # /a2a endpoints use token_id; Termix /services endpoints need the
+    # internal card id fetched live above (verified: token_id 404s there).
+    profile["offchain_services"] = _resolve_offchain_service_endpoints(
+        profile.get("offchain_services") or [],
+        token_id=row.token_id,
+        termix_internal_id=(
+            (termix_card or {}).get("id") if platform_name == "Termix" else None
+        ),
+    )
 
     # Fetch MCP server info for agents with MCP services.
     mcp_endpoint = (row.services or {}).get("mcp", {}).get("endpoint")
