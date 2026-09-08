@@ -397,10 +397,11 @@
        /services endpoint (via its internal Termix id), plus a link to the
        Termix marketplace where the hire actually happens. -->
   {% if termix_internal_id %}
+  {% set _termix_link = termix_listing_url if termix_services else profile.termix_agent_url %}
   <section class="agent-profile termix-pricing">
     <h2>Pricing</h2>
-    {% if termix_listing_url %}
-    <p><a href="{{ termix_listing_url }}" target="_blank" rel="noopener">View on TermiX &rarr;</a></p>
+    {% if _termix_link %}
+    <p><a href="{{ _termix_link }}" target="_blank" rel="noopener">View on TermiX &rarr;</a></p>
     {% endif %}
     {% if not termix_services %}
     <p class="text-muted">This agent does not offer services currently.</p>

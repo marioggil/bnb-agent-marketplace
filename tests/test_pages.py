@@ -1130,6 +1130,9 @@ async def test_agent_detail_no_termix_pricing_without_services(client, db, monke
     assert "does not offer services" in body
     # No listing price is shown (empty items).
     assert "USDC" not in body
+    # Without listings the link goes to the agent page, not the listing.
+    assert f"https://www.agent.family/agents/{token_id}" in body
+    assert "https://www.agent.family/listing?id=" not in body
 
 
 # ---------------------------------------------------------------------------
