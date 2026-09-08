@@ -232,6 +232,23 @@ class AgentResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _has_rate_limit_headers(response: httpx.Response) -> bool:
+    """Return True when 403 is a rate-limit signal, not a real auth failure.
+
+    8004scan uses X-RateLimit-* headers. When the minute/day quota is
+    exhausted it may return 403 instead of 429.
+    """
+    return any(
+        h in response.headers
+        for h in (
+            "X-RateLimit-Remaining-Minute",
+            "X-RateLimit-Remaining-Day",
+            "X-RateLimit-Limit-Minute",
+            "X-RateLimit-Limit-Day",
+        )
+    )
+
+
 def _retry_after_seconds(response: httpx.Response | None) -> float | None:
     """Parse `Retry-After` honoring the second form."""
     if response is None:
@@ -247,7 +264,14 @@ def _retry_after_seconds(response: httpx.Response | None) -> float | None:
 
 def _is_retryable_status(exc: BaseException) -> bool:
     if isinstance(exc, httpx.HTTPStatusError):
-        return exc.response.status_code in {429, 500, 502, 503, 504}
+        code = exc.response.status_code
+        if code == 429:
+            return True
+        # 403 may be returned as a rate-limit signal (no 429) when the
+        # minute/day quota is exhausted. Retry it so we honour back-off.
+        if code == 403 and _has_rate_limit_headers(exc.response):
+            return True
+        return code in {500, 502, 503, 504}
     return isinstance(exc, (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError))
 
 
@@ -340,6 +364,9 @@ class Client8004Scan:
                         response.raise_for_status()
                     if 500 <= response.status_code < 600:
                         # Will be retried by tenacity.
+                        response.raise_for_status()
+                    if response.status_code == 403 and _has_rate_limit_headers(response):
+                        # Rate-limit 403; let tenacity retry it with back-off.
                         response.raise_for_status()
                     if 400 <= response.status_code < 500:
                         # Other 4xx are not recoverable; surface as-is.
