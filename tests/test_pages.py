@@ -1109,8 +1109,8 @@ async def test_agent_detail_termix_pricing_block(client, db, monkeypatch):
 
 
 async def test_agent_detail_no_termix_pricing_without_services(client, db, monkeypatch):
-    """When the Termix agent has no service listings, no Pricing block with
-    prices is rendered (the page stays clean)."""
+    """When the Termix agent has no service listings, the Pricing block still
+    renders and says the agent does not offer services (no prices listed)."""
     token_id = 411
     await _seed_termix_agent(db, token_id)
     await db.commit()
@@ -1125,9 +1125,11 @@ async def test_agent_detail_no_termix_pricing_without_services(client, db, monke
     monkeypatch.setattr("app.services.client_termix.fetch_termix_services", _fake_services_empty)
 
     body = client.get(f"/agents/56/{token_id}").text
-    # No listing price / no Termix pricing link with prices.
+    # The Pricing block is present and states the agent offers no services.
+    assert "Pricing" in body
+    assert "does not offer services" in body
+    # No listing price is shown (empty items).
     assert "USDC" not in body
-    assert "https://www.agent.family/listing?id=" not in body
 
 
 # ---------------------------------------------------------------------------

@@ -396,11 +396,14 @@
   <!-- Termix Pricing: service listings with prices fetched from the agent's
        /services endpoint (via its internal Termix id), plus a link to the
        Termix marketplace where the hire actually happens. -->
-  {% if termix_services %}
+  {% if termix_internal_id %}
   <section class="agent-profile termix-pricing">
     <h2>Pricing</h2>
     {% if termix_listing_url %}
     <p><a href="{{ termix_listing_url }}" target="_blank" rel="noopener">View on TermiX &rarr;</a></p>
+    {% endif %}
+    {% if not termix_services %}
+    <p class="text-muted">This agent does not offer services currently.</p>
     {% endif %}
     {% for svc in termix_services %}
     <div class="termix-service">
