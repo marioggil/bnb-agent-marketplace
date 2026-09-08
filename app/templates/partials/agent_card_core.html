@@ -39,7 +39,6 @@
       {% if agent.activity_score is not none %}
         <span class="score activity-score" title="Local activity score (A2A probes + on-chain track record)">{{ agent.activity_score }} <span class="score-label">activity</span></span>
       {% endif %}
-      {% if _hire_count %}<span>Hired by {{ _hire_count }}</span>{% endif %}
       {% if agent.owner_address and _owner %}
         <a class="creator" href="/?owner={{ agent.owner_address }}">by {{ _owner }}</a>
         {% if flagged_addresses is defined and (agent.owner_address | lower) in flagged_addresses %}
@@ -50,12 +49,5 @@
     {% if agent.total_feedbacks > 0 %}
       <p class="ratings">&#9733; {{ agent.star_count }} &middot; {{ agent.total_feedbacks }} ratings</p>
     {% endif %}
-    <div class="card-cta">
-      {% if agent.agent_wallet %}
-        <a class="btn btn-primary" href="/agents/{{ agent.chain_id }}/{{ agent.token_id }}">Hire</a>
-      {% else %}
-        <button class="btn" type="button" disabled>Not hireable</button>
-      {% endif %}
-    </div>
   </div>
 </article>

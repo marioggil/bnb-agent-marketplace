@@ -15,7 +15,6 @@ from app.db.models.agent import (
 )
 from tests.conftest import _now
 
-
 async def _seed_one(
     session,
     token_id: int = 1,
@@ -45,13 +44,11 @@ async def _seed_one(
     await session.commit()
     return aid
 
-
 # R1 — full HTML render.
 async def test_home_full_html_renders_cards(client, db):
     await _seed_one(db, 1, name="Alpha")
     body = client.get("/").text
     assert "<html" in body and "Alpha" in body
-
 
 # Design alignment (DESIGN.md D6/D8): the full home renders the hero partial
 # and the detail page renders the hire panel + trust signals. This pins the
@@ -62,7 +59,6 @@ async def test_home_renders_hero_and_owner_filter(client, db):
     body = client.get("/").text
     assert "Automate your investments with AI agents" in body
     assert 'href="/?owner=' in body
-
 
 # sdd/doc-refresh DSG-2 — the hero renders all 10 category cards, each an
 # /?category= link with icon + name + tagline + example.
@@ -89,13 +85,11 @@ async def test_home_renders_ten_category_cards(client, db):
     assert "Finds the hole before the hacker" in body
     assert "Keeps the books in order" in body
 
-
 async def test_agent_detail_renders_hire_panel(client, db):
     await _seed_one(db, 1, name="Alpha")
     body = client.get("/agents/56/1").text
     assert 'id="hire-cta"' in body
     assert 'id="hire-status"' in body
-
 
 # Hired-by-you panel: a signed-in user with a paid hire sees the history and
 # the "Hire again" CTA; anonymous users see neither.
@@ -150,7 +144,6 @@ async def test_agent_detail_shows_hired_panel_and_hire_again(client, db, respx_m
     assert "Hire again for $1.03" in body
     assert "view transaction" in body
 
-
 async def test_agent_detail_no_hired_panel_for_anonymous(client, db):
     await _seed_one(db, 1, name="Alpha")
     body = client.get("/agents/56/1").text
@@ -181,7 +174,6 @@ async def test_agent_detail_lazy_hire_offer_wiring(client, db):
     # The button node must survive (payment.js binds it at DOMContentLoaded) —
     # the swap target is the inner slot, never the button itself.
     assert 'data-agent-id="' in body
-
 
 # Card + detail show the locally-computed average of mirrored feedbacks.
 async def test_agent_score_uses_feedback_average(client, db):
@@ -215,7 +207,6 @@ async def test_agent_score_uses_feedback_average(client, db):
     detail = client.get("/agents/56/1").text
     assert "Reviews (2) &mdash; avg score 80" in detail
 
-
 # Rank, cross-chain presence and endpoint verification render from cached data.
 async def test_agent_detail_rank_crosschain_endpoint(client, db):
     from app.db.models.agent import AgentCache
@@ -246,13 +237,11 @@ async def test_agent_detail_rank_crosschain_endpoint(client, db):
     assert "Endpoint verification" in body
     assert "not verified" in body and "domain mismatch" in body
 
-
 # R2 — HTMX swap returns partial only.
 async def test_home_htmx_returns_partial(client, db):
     await _seed_one(db, 1, name="Alpha")
     body = client.get("/", headers={"HX-Request": "true"}).text
     assert "<html" not in body and "Alpha" in body
-
 
 # Filters (category study §8): hireable, platform, health + sort keys.
 async def test_filter_hireable(client, db):
@@ -268,7 +257,6 @@ async def test_filter_hireable(client, db):
     body = client.get("/?hireable=false").text
     assert "Beta" in body and "Alpha" not in body
 
-
 async def test_sort_metadata_completeness(client, db):
     await _seed_one(db, 1, name="Alpha", owner_address="0x" + "ab" * 20)
     await _seed_one(db, 2, name="Beta", owner_address="0x" + "ab" * 20)
@@ -280,7 +268,6 @@ async def test_sort_metadata_completeness(client, db):
     body = client.get("/?sort=metadata_completeness").text
     assert body.index("Beta") < body.index("Alpha")
 
-
 async def test_filter_health(client, db):
     await _seed_one(db, 1, name="Alpha", owner_address="0x" + "ab" * 20)
     await _seed_one(db, 2, name="Beta", owner_address="0x" + "ab" * 20)
@@ -291,7 +278,6 @@ async def test_filter_health(client, db):
             row.health_status = {"overall_status": "degraded"} if row.token_id == 1 else None
     body = client.get("/?health=degraded").text
     assert "Alpha" in body and "Beta" not in body
-
 
 async def test_filter_platform_termix(client, db):
     await _seed_one(db, 1, name="Alpha", owner_address="0x" + "ab" * 20)
@@ -311,7 +297,6 @@ async def test_filter_platform_termix(client, db):
             )
     body = client.get("/?platform=termix").text
     assert "Alpha" in body and "Beta" not in body
-
 
 async def test_agent_detail_evoevo_card_renders(client, db, monkeypatch):
     """EvoEvo agents get their live card fetched and rendered."""
@@ -344,7 +329,6 @@ async def test_agent_detail_evoevo_card_renders(client, db, monkeypatch):
     assert "EvoEvo live data" in body
     assert "EvoBot" in body
     assert "eip155:56:0xabc" in body
-
 
 async def test_agent_detail_eip8004_registration_renders(client, db):
     """Agents with offchain_content show EIP-8004 registration data."""
@@ -382,7 +366,6 @@ async def test_agent_detail_eip8004_registration_renders(client, db):
     assert "Portfolio rebalance service" in body
     assert "rebalancing" in body
     assert "Domain proof" in body
-
 
 async def test_agent_detail_mcp_info_renders(client, db, monkeypatch):
     """Agents with MCP services get their MCP info fetched and rendered."""
@@ -432,7 +415,6 @@ async def test_agent_detail_mcp_info_renders(client, db, monkeypatch):
     assert "npm" in body
     assert "npx -y @example/mcp-server@latest" in body
 
-
 async def test_agent_detail_oasf_and_social_renders(client, db):
     """Agents with OASF skills and social links show them."""
     await _seed_one(db, 1, name="OASF Agent")
@@ -478,31 +460,26 @@ async def test_agent_detail_oasf_and_social_renders(client, db):
     assert "contact@example.com" in body
     assert "streaming" in body
 
-
 # R5 — image fallback renders /static/img/placeholder.svg.
 async def test_image_fallback_to_placeholder(client, db):
     await _seed_one(db, 1, name="NoImage", image_url=None)
     body = client.get("/", headers={"HX-Request": "true"}).text
     assert "/static/img/placeholder.svg" in body and "NoImage" in body
 
-
 # R6 — /favorites anon: 302 for direct nav; 200 + HX-Redirect for HTMX.
 async def test_favorites_anon_redirects_to_auth(client):
     response = client.get("/favorites", follow_redirects=False)
     assert response.status_code == 302 and response.headers["location"] == "/auth"
-
 
 async def test_favorites_anon_htmx_redirect(client):
     response = client.get("/favorites", headers={"HX-Request": "true"})
     assert response.status_code == 200
     assert response.headers.get("HX-Redirect") == "/auth"
 
-
 # /auth page renders.
 async def test_auth_page_renders(client):
     body = client.get("/auth").text
     assert "<html" in body and "Sign in" in body
-
 
 # sdd/doc-refresh TAX-5 — the category filter select iterates the taxonomy
 # (category_options global) and renders a display label per slug.
@@ -532,11 +509,9 @@ async def test_home_filter_offers_eleven_category_options(client, db):
         assert f'value="{slug}"' in options
         assert label.replace("&", "&amp;") in options
 
-
 # ---------------------------------------------------------------------------
 # agent-score U1/U2 — card badge + detail breakdown + probe live section
 # ---------------------------------------------------------------------------
-
 
 async def test_agent_card_shows_activity_badge(client, db):
     """U1: the card renders the local activity score in average_score style."""
@@ -552,13 +527,11 @@ async def test_agent_card_shows_activity_badge(client, db):
     assert "87.5" in body
     assert "activity-score" in body
 
-
 async def test_agent_card_no_activity_badge_when_null(client, db):
     """U1: agents without a materialized score render no activity badge."""
     await _seed_one(db, 1, name="Alpha")
     body = client.get("/").text
     assert "activity-score" not in body
-
 
 async def test_agent_detail_renders_activity_breakdown_and_probe(client, db):
     """U2: detail renders local breakdown (score_dimensions markup) + probe."""
@@ -610,11 +583,9 @@ async def test_agent_detail_renders_activity_breakdown_and_probe(client, db):
     assert "BOUND" in section and "online" in section
     assert "Last probed" in section
 
-
 # ---------------------------------------------------------------------------
 # agent-score U3 — compare partial + page + filter_form options (D3)
 # ---------------------------------------------------------------------------
-
 
 async def test_compare_htmx_partial_returns_fragment(client, db):
     """U3: an HTMX request for /agents/compare returns the fragment only."""
@@ -651,7 +622,6 @@ async def test_compare_htmx_partial_returns_fragment(client, db):
     assert "Alpha" in table and "Beta" in table
     assert "90" in table and "70" in table
 
-
 async def test_compare_full_page(client, db):
     """U3: a plain request renders the compare page wrapper with the table."""
     await _seed_one(db, 1, name="Alpha")
@@ -661,12 +631,10 @@ async def test_compare_full_page(client, db):
     assert "Compare agents" in body
     assert "Alpha" in body and "Beta" in body
 
-
 async def test_compare_empty_state(client, db):
     """U3: no ids → the partial renders the empty state."""
     body = client.get("/agents/compare", headers={"HX-Request": "true"}).text
     assert "No agents to compare" in body
-
 
 async def test_filter_offers_activity_sort_and_healthy_health(client, db):
     """D3: 'Activity' sort option + 'healthy' health option in filter_form."""
@@ -676,11 +644,9 @@ async def test_filter_offers_activity_sort_and_healthy_health(client, db):
     assert "Activity" in body
     assert 'value="healthy"' in body
 
-
 # ---------------------------------------------------------------------------
 # Phase 1b — OFAC compliance Hire-CTA gate (T5 + T7).
 # ---------------------------------------------------------------------------
-
 
 async def test_agent_detail_hire_cta_disabled_when_both_compliance_flags_set(
     client, db
@@ -745,7 +711,6 @@ async def test_agent_detail_hire_cta_disabled_when_both_compliance_flags_set(
         f"flags are set. Got opening tag: {cta_open_tag!r}"
     )
 
-
 async def test_agent_detail_hire_cta_enabled_when_only_one_flag_set(client, db):
     """Single-flag agent renders warning copy only; `#hire-cta` stays enabled.
 
@@ -801,13 +766,11 @@ async def test_agent_detail_hire_cta_enabled_when_only_one_flag_set(client, db):
         f"flag is set. Got opening tag: {cta_open_tag!r}"
     )
 
-
 # ---------------------------------------------------------------------------
 # ERC-8183 escrow (buyer-side) — secondary hire button on the agent page
 # ---------------------------------------------------------------------------
 
 from app.config import _settings_cache  # noqa: E402
-
 
 async def _seed_agent_with_wallet(
     session,
@@ -837,7 +800,6 @@ async def _seed_agent_with_wallet(
     await session.commit()
     return aid
 
-
 async def test_agent_page_renders_escrow_button_when_wallet_present(client, db):
     """When the agent has agent_wallet and ERC8183_ENABLED=true, the page
     renders the secondary "Hire via Escrow" button + the modal scaffold."""
@@ -853,13 +815,11 @@ async def test_agent_page_renders_escrow_button_when_wallet_present(client, db):
     assert "data-chain-id=\"56\"" in body
     assert "data-default-budget-wei=\"100000000000000000\"" in body
 
-
 async def test_agent_page_hides_escrow_button_when_no_wallet(client, db):
     await _seed_agent_with_wallet(db, 101, wallet=None)
     body = client.get("/agents/56/101").text
     assert 'id="hire-escrow-cta"' not in body
     assert 'id="hire-escrow-modal"' not in body
-
 
 async def test_agent_page_hides_escrow_button_when_disabled(client, db, monkeypatch):
     """ERC8183_ENABLED=false -> the partial no-ops; no button rendered."""
@@ -872,3 +832,81 @@ async def test_agent_page_hides_escrow_button_when_disabled(client, db, monkeypa
         assert 'id="hire-escrow-modal"' not in body
     finally:
         _settings_cache.cache_clear()
+
+# ---------------------------------------------------------------------------
+# Home card anatomy (simplify): no "Hire" button + no "Hired by N" in the card.
+# Hire happens on the detail page (DESIGN.md card anatomy fix v2).
+# ---------------------------------------------------------------------------
+
+async def _seed_card_agent(
+    session,
+    token_id: int,
+    *,
+    name: str = "CardAgent",
+    owner: str = "0x" + "11" * 20,
+    wallet: str | None = "0x" + "ab" * 20,
+) -> str:
+    aid = build_agent_id(56, BSC_IDENTITY_REGISTRY, token_id)
+    session.add(
+        AgentCache(
+            agent_id=aid,
+            chain_id=BSC_CHAIN_ID,
+            token_id=token_id,
+            registry_address=BSC_IDENTITY_REGISTRY,
+            name=name,
+            description="A test agent for card anatomy",
+            owner_address=owner,
+            agent_wallet=wallet,
+            # No owner_username so the truncated wallet form is rendered.
+            category="finance_payments",
+            average_score=82.5,
+            total_feedbacks=12,
+            star_count=4,
+            activity_score=70.0,
+            supported_protocols=[],
+            cross_chain_versions=[],
+            raw={},
+            created_at=_now(),
+            updated_at=_now(),
+        )
+    )
+    await session.commit()
+    return aid
+
+async def test_home_card_has_no_hire_button(client, db):
+    """The home card must NOT contain a Hire CTA — hiring happens on the
+    detail page. Keeps the listing scannable."""
+    await _seed_card_agent(db, 200)
+    body = client.get("/").text
+    assert "CardAgent" in body
+    # The detail-page #hire-cta lives in agent_detail.html, not the card.
+    assert 'id="hire-cta"' not in body
+    assert ">Hire</a>" not in body
+    assert ">Not hireable</button>" not in body
+
+async def test_home_card_has_no_hired_by_counter(client, db):
+    """The 'Hired by N' usage counter is a detail-page signal; the card
+    should not duplicate it."""
+    await _seed_card_agent(db, 201)
+    body = client.get("/").text
+    assert "CardAgent" in body
+    # The card used to render 'Hired by {{ _hire_count }}' when hires > 0.
+    # With no hires, it never showed — but also must not show even if hires > 0.
+    assert "Hired by" not in body
+
+async def test_home_card_keeps_owner_wallet_truncated(client, db):
+    """The owner wallet stays visible (truncated) so the user can identify
+    the publisher at a glance."""
+    # Use a distinctive owner address so the truncated form is unique on the page.
+    owner = "0x" + "cafe" + "00" * 18 + "beef"  # 0xcafe000...000beef
+    await _seed_card_agent(db, 202, owner=owner)
+    body = client.get("/").text
+    # Card renders the owner as 'by 0xcafe…beef' (first 4 + last 4 chars).
+    assert "by 0xcafe" + chr(0x2026) + "beef" in body
+
+async def test_home_card_keeps_score_and_activity(client, db):
+    """Score and activity score stay on the card — they're trust signals."""
+    await _seed_card_agent(db, 203)
+    body = client.get("/").text
+    assert "score" in body
+    assert "activity" in body
